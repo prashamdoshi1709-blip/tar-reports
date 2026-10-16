@@ -20,3 +20,8 @@ Status: integration proven with test files only. No real report has been schedul
 8. Read back with get_post (status scheduled, correct dueAt, channel, title, caption). Write the Drive published marker.
 9. 14:45 watchdog: confirm the post is still scheduled; alert otherwise.
 Alerts: PushNotification (and Gmail if wanted).
+
+## Clean-PDF verification (added 16 Oct 2026)
+`tools/verify_clean_pdf.py <pdf> <expected title>` must print PASS before any file is committed to Pages or sent to Buffer.
+It checks: exactly 2 pages of 810 x 1012.5 pt; no "NOT APPROVED" / "approved for publication" / "DRAFT" in page text (also with spaces removed, to catch letter-spaced banners), in the Info dictionary, in XMP, or anywhere in the decompressed raw file; no em dashes; Lora and Inter embedded; PDF Title equals the expected clean title.
+`tar_lib.build()` defaults the PDF title to "TAR NOT APPROVED FOR PUBLICATION", so the clean rebuild must call it with an explicit title: `<Company> (ASX: <TICKER>) - <short headline>`. The HTML `<title>` must be replaced too.
