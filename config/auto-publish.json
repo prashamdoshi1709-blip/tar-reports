@@ -1,0 +1,4 @@
+{
+  "enabled": false,
+  "note": "Master switch read by the TAR auto-publish routine. Must be true AND the routine must be enabled. Only Prasham changes this."
+}

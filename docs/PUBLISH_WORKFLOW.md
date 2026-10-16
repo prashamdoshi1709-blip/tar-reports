@@ -1,5 +1,7 @@
 # TAR automatic publishing workflow (prepared, NOT enabled)
 
+Update 16 Oct 2026: re-proven. A cloud session pushed directly to main (no PR, no feature branch merge); Pages served the file in minutes; Buffer created and returned a LinkedIn PDF document draft from the Pages URLs. Master switch: config/auto-publish.json (enabled=false). Routine: TAR Auto-Publish 2:00 PM (disabled).
+
 Status: integration proven with test files only. No real report has been scheduled.
 
 ## Proven
