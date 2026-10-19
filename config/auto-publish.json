@@ -1,4 +1,4 @@
 {
-  "enabled": false,
-  "note": "Master switch read by the TAR auto-publish routine. Must be true AND the routine must be enabled. Only Prasham changes this."
+  "enabled": true,
+  "note": "Master switch read by the TAR auto-publish routine. Must be true AND the routine must be enabled. Activated 19 Oct 2026 on Prasham's written authorisation."
 }
