@@ -5,12 +5,16 @@ Schedules ONE verified, current-day TAR report in Buffer for 3:00 PM Sydney thro
 GraphQL API (https://api.buffer.com). It never researches, edits or rebuilds anything: it only
 re-verifies the committed payload and, if every check passes, makes exactly one createPost call.
 
-MODE (env): live (default, push to main only) | dryrun (all checks, no createPost, time guards skipped)
-            | selftest (secret + Buffer read-only connection test, no payload needed)
-Fail closed: any problem -> exit 1 with a reason, nothing scheduled. The API key is read from the
+MODE (env): scheduled (GitHub schedule event only: 2:17 PM and 2:24 PM Sydney) | dryrun (all checks on a named
+            payload, no createPost, time guards skipped) | selftest (secret + Buffer read-only connection test)
+A report is scheduled ONLY from a complete verified handoff reports/<date>-<TICKER>/publish.json (schema 2) written
+by the 1:58 PM routine after all research, ASX and clean-PDF checks passed. A PDF alone never publishes anything.
+Idempotent: Buffer is read before every attempt; an identical existing post is success, never a second post; an
+uncertain createPost is never retried in the same run (Buffer is re-read first). Fail closed: any problem in
+dryrun/selftest -> exit 1; in scheduled mode -> exit 0 with a warning annotation (silent, nothing scheduled). The API key is read from the
 BUFFER_API_KEY environment variable only and is never printed.
 """
-import hashlib, json, os, re, subprocess, sys, time, urllib.request, urllib.error
+import glob, hashlib, json, os, re, subprocess, sys, time, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -25,11 +29,14 @@ CLOSURES = {"2026-12-25", "2026-12-28", "2027-01-01", "2027-01-26", "2027-03-26"
             "2027-06-14", "2027-12-27", "2027-12-28"}
 EARLY_CLOSE = {"2026-12-24", "2026-12-31", "2027-12-24", "2027-12-31"}
 BAD = re.compile(r"not\s*approved|approved\s*for\s*publication|draft", re.I)
-MODE = os.environ.get("MODE", "live").strip() or "live"
+MODE = os.environ.get("MODE", "scheduled").strip() or "scheduled"
 
 
 def die(msg):
     print(f"NOT SCHEDULED: {msg}")
+    if MODE == "scheduled":  # silent skip: green run, reason kept in a warning annotation
+        print(f"::warning title=NOT SCHEDULED::{msg}")
+        sys.exit(0)
     print(f"::error title=NOT SCHEDULED::{msg}")  # annotation: readable through the check-runs API
     sys.exit(1)
 
@@ -38,7 +45,7 @@ def now_syd():
     return datetime.now(SYD)
 
 
-def gql(query, variables=None):
+def gql(query, variables=None, soft=False):
     key = os.environ.get("BUFFER_API_KEY", "").strip()
     if not key:
         die("BUFFER_API_KEY secret is not set (single manual step: add it under repo Settings > Secrets > Actions)")
@@ -49,10 +56,16 @@ def gql(query, variables=None):
         with urllib.request.urlopen(req, timeout=60) as r:
             out = json.loads(r.read())
     except urllib.error.HTTPError as e:
+        if soft:
+            raise RuntimeError(f"HTTP {e.code}")
         die(f"Buffer API HTTP {e.code} (401 means the API key is invalid or revoked)")
     except Exception as e:
+        if soft:
+            raise RuntimeError(type(e).__name__)
         die(f"Buffer API request failed: {type(e).__name__}")
     if out.get("errors"):
+        if soft:
+            raise RuntimeError("API error")
         die("Buffer API error: " + "; ".join(str(x.get("message")) for x in out["errors"])[:400])
     return out["data"]
 
@@ -85,17 +98,24 @@ def all_posts():
         after = p["pageInfo"]["endCursor"]
 
 
-def duplicate_check(date_line, slot):
+def find_conflicts(date_line, slot):
+    """Every real Buffer post (not DRY RUN/TEST ONLY drafts) that mentions this report or sits in the 3 PM slot."""
+    out = []
     for p in all_posts():
         t = p["text"] or ""
         if t.startswith("DRY RUN DRAFT") or t.startswith("TEST ONLY"):
             continue
-        if date_line in t:
-            die(f"duplicate: Buffer post {p['id']} (status {p['status']}) already contains '{date_line}'")
-        if p["status"] in ("scheduled", "sending", "needs_approval") and p["dueAt"]:
-            due = datetime.fromisoformat(p["dueAt"].replace("Z", "+00:00"))
-            if due == slot:
-                die(f"a post ({p['id']}) is already scheduled for the {slot.isoformat()} slot")
+        due = datetime.fromisoformat(p["dueAt"].replace("Z", "+00:00")) if p["dueAt"] else None
+        in_slot = p["status"] in ("scheduled", "sending", "needs_approval") and due == slot
+        if date_line in t or in_slot:
+            out.append(p)
+    return out
+
+
+def is_identical(p, cap, slot):
+    """The existing post is exactly the one we would create (same text, 3 PM slot, still live or already sent)."""
+    due = datetime.fromisoformat(p["dueAt"].replace("Z", "+00:00")) if p["dueAt"] else None
+    return (p["text"] == cap and due == slot and p["status"] in ("scheduled", "sending", "sent"))
 
 
 def sha256(path):
@@ -111,34 +131,40 @@ def main():
         print(msg)
         print(f"::notice title=SELFTEST PASS::{msg}")
         return
-    if MODE not in ("live", "dryrun"):
+    if MODE not in ("scheduled", "dryrun"):
         die(f"unknown MODE {MODE!r}")
-    if MODE == "live" and (os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/heads/main"):
-        die("live scheduling is only allowed from a push to main")
+    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+        die("scheduling a post is only allowed from the GitHub schedule event")
+    if MODE == "scheduled" and os.environ.get("GITHUB_REF") != "refs/heads/main":
+        die("scheduling a post is only allowed from main")
 
-    # ---- payload selection
+    # ---- payload selection: today's verified handoff only
     path = os.environ.get("PAYLOAD", "").strip()
     if not path:
-        out = subprocess.run(["git", "diff", "--name-only", "HEAD^", "HEAD", "--", "reports/*/publish.json"],
-                             capture_output=True, text=True).stdout.split()
-        if len(out) != 1:
-            die(f"expected exactly one publish.json in this commit, found {len(out)}")
-        path = out[0]
+        td = now_syd().date().isoformat()
+        found = sorted(glob.glob(f"reports/{td}-*/publish.json"))
+        if not found:
+            print(f"::notice title=NO HANDOFF::No verified publish.json for {td}; nothing to do.")
+            print(f"NO HANDOFF for {td}: nothing to do (a PDF without a verified handoff is never published).")
+            return
+        if len(found) != 1:
+            die(f"expected exactly one handoff for {td}, found {len(found)}")
+        path = found[0]
     if not re.fullmatch(r"reports/\d{4}-\d{2}-\d{2}-[A-Z0-9]{2,5}/publish\.json", path) or not os.path.isfile(path):
         die(f"bad payload path {path!r}")
     P = json.load(open(path, encoding="utf-8"))
     folder = os.path.dirname(path)
     tk, iso, company = P["ticker"], P["report_date_iso"], P["company_name"]
     d = datetime.strptime(P["report_date"], "%d %B %Y").date()
-    if P.get("schema") != 1 or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
-        die("payload schema/mode/date/folder mismatch")
+    if P.get("schema") != 2 or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
+        die("payload schema/mode/date/folder mismatch (schema 2 required)")
     if not re.fullmatch(r"[A-Z0-9]{2,5}", tk):
         die("bad ticker")
 
-    # ---- current-day production guard, time guards
+    # ---- current-day production guard, trading-day rules, master switch
     today = now_syd().date()
     slot = datetime(d.year, d.month, d.day, 15, 0, tzinfo=SYD)
-    if MODE == "live":
+    if MODE == "scheduled":
         if d != today:
             die(f"report date {d} is not today in Sydney ({today})")
         if d.weekday() >= 5 or iso in CLOSURES or iso in EARLY_CLOSE:
@@ -154,12 +180,16 @@ def main():
         die(f"past the 2:30 PM Sydney cutoff or slot too close (now {now_syd().isoformat()})")
 
     # ---- payload hygiene (mirrors the routine's Step 2e)
-    for k in ("claude_verification", "package_id", "review_record_id", "pdf_sha256", "title", "caption", "marker_sha256"):
+    for k in ("claude_verification", "package_id", "review_record_id", "review_status", "pdf_sha256", "pdf_url",
+              "cover_url", "title", "caption", "marker_sha256", "handoff_created_at"):
         if k not in P:
             die(f"payload missing {k}")
     cv = P["claude_verification"]
-    need = ["marker_hashes_match", "review_research_ready", "verify_clean_pdf_pass", "visual_check_done",
-            "newer_asx_filings_none_material", "buffer_duplicate_check_clear"]
+    need = ["marker_hashes_match", "review_research_ready", "source_checks_passed", "verify_clean_pdf_pass",
+            "visual_check_done", "newer_asx_filings_none_material", "buffer_duplicate_check_clear",
+            "master_switch_enabled"]
+    if P["review_status"] != "RESEARCH-READY":
+        die("handoff review_status is not RESEARCH-READY")
     if not all(cv.get(k) is True for k in need):
         die("claude_verification flags are not all true: " + ",".join(k for k in need if cv.get(k) is not True))
     title, cap = P["title"], P["caption"]
@@ -187,6 +217,8 @@ def main():
 
     # ---- public URLs live and identical (Pages)
     pdf_url, png_url = f"{PAGES}/{iso}-{tk}/{fname}.pdf", f"{PAGES}/{iso}-{tk}/{fname}_cover.png"
+    if P["pdf_url"] != pdf_url or P["cover_url"] != png_url:
+        die("handoff PDF/cover URLs do not match the expected committed locations")
     while True:
         try:
             body = urllib.request.urlopen(urllib.request.Request(pdf_url + f"?v={int(time.time())}",
@@ -201,25 +233,50 @@ def main():
             die("public PDF/cover not live with the verified hash in time")
         time.sleep(15)
 
-    # ---- Buffer: connection, channel, duplicates
+    # ---- Buffer: connection, channel, idempotency (Buffer is read BEFORE every attempt)
     buffer_connection_checks()
-    duplicate_check(date_line, slot)
+    conflicts = find_conflicts(date_line, slot)
+    same = [p for p in conflicts if is_identical(p, cap, slot)]
     if MODE == "dryrun":
-        print("DRYRUN PASS: every check passed; createPost NOT called.")
-        print("::notice title=DRYRUN PASS::every check passed; createPost NOT called.")
+        if conflicts:
+            print(f"DRYRUN PASS: every check passed; createPost NOT called. Duplicate protection WOULD BLOCK: "
+                  f"{len(conflicts)} existing Buffer post(s) {[p['id'] for p in conflicts]} for this report/slot.")
+            print(f"::notice title=DRYRUN PASS::all checks passed, createPost not called, duplicate protection would block ({len(conflicts)} existing)")
+        else:
+            print("DRYRUN PASS: every check passed; createPost NOT called; no existing Buffer post, so a live run would schedule.")
+            print("::notice title=DRYRUN PASS::all checks passed, createPost not called, no duplicate present")
         return
+    if same and len(conflicts) == len(same):
+        print(f"ALREADY SCHEDULED (idempotent): Buffer post {same[0]['id']} status {same[0]['status']}. Nothing created.")
+        print(f"::notice title=ALREADY SCHEDULED::Buffer post {same[0]['id']} ({same[0]['status']}); no new post created")
+        return
+    if conflicts:
+        die(f"duplicate/conflict: existing Buffer post(s) {[p['id'] for p in conflicts]} are not identical to this report")
     if not time_ok():
         die("2:30 PM cutoff reached before createPost")
 
-    # ---- the single createPost call (never retried)
+    # ---- the single createPost call; an uncertain outcome is never retried, Buffer is re-read first
     inp = {"channelId": CHANNEL_ID, "schedulingType": "automatic", "mode": "customScheduled",
            "dueAt": slot.isoformat(), "saveToDraft": False, "text": cap,
            "assets": [{"document": {"url": pdf_url, "thumbnailUrl": png_url, "title": title}}]}
-    res = gql("mutation($i:CreatePostInput!){createPost(input:$i){__typename ... on PostActionSuccess{post{id}}"
-              " ... on MutationError{message}}}", {"i": inp})["createPost"]
-    if res["__typename"] != "PostActionSuccess":
-        die(f"createPost refused: {res.get('message')}")
-    pid = res["post"]["id"]
+    pid = None
+    try:
+        res = gql("mutation($i:CreatePostInput!){createPost(input:$i){__typename ... on PostActionSuccess{post{id}}"
+                  " ... on MutationError{message}}}", {"i": inp}, soft=True)["createPost"]
+        if res["__typename"] != "PostActionSuccess":
+            die(f"createPost refused: {res.get('message')}")
+        pid = res["post"]["id"]
+    except RuntimeError as e:
+        time.sleep(5)  # outcome UNCERTAIN: look at Buffer, never resend
+        try:
+            again = [p for p in find_conflicts(date_line, slot) if is_identical(p, cap, slot)]
+        except SystemExit:
+            raise
+        if len(again) == 1:
+            print(f"UNCERTAIN createPost ({e}) but Buffer shows the post: {again[0]['id']}. Not retried.")
+            pid = again[0]["id"]
+        else:
+            die(f"createPost outcome uncertain ({e}) and no matching post found; NOT retried (next run checks Buffer first)")
 
     # ---- read back; delete only this post if anything is off
     p = gql("query($i:PostInput!){post(input:$i){id status dueAt channelId text assets{source thumbnail ... on DocumentAsset{document{title}}}}}",
