@@ -1,0 +1,28 @@
+{
+ "schema": 2,
+ "mode": "LIVE",
+ "ticker": "CGF",
+ "company_name": "Challenger Limited",
+ "report_date": "19 October 2026",
+ "report_date_iso": "2026-10-19",
+ "package_id": "HISTORICAL-REHEARSAL-CGF-19Oct2026",
+ "review_record_id": "HISTORICAL-REHEARSAL (not a live handoff)",
+ "review_status": "RESEARCH-READY",
+ "marker_sha256": "HISTORICAL-REHEARSAL",
+ "handoff_created_at": "2026-10-19T14:05:00+11:00",
+ "pdf_sha256": "e970844efe11a988f88f8bdaf1c35ac4124ca09df9bff7f9499f42cb43b6798f",
+ "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-19-CGF/TAR_CGF_19Oct2026.pdf",
+ "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-19-CGF/TAR_CGF_19Oct2026_cover.png",
+ "title": "Challenger: Daiichi Life A$11.80 Offer Received",
+ "caption": "The Announcement Room | Challenger Limited (CGF)\n\nChallenger said it has received a non-binding, conditional proposal from TAL Daiichi Life Australia, a subsidiary of Daiichi Life Group, to buy the 79.5% of the company it does not already own for $11.80 per share through a scheme of arrangement. Challenger noted that this is a 17.7% premium to its one-month VWAP of $10.03.\n\nThe Board is considering the proposal and says there is no certainty it will lead to a binding offer. Challenger released its September 2026 quarter update at the same time, reporting total sales of $4.4 billion, up 52% from a year earlier.\n\nKey points:\n• Indicative price of $11.80 per share, 17.7% above the one-month VWAP of $10.03\n• Proposal is for the 79.5% of shares not already owned, via a scheme of arrangement\n• Conditions include due diligence, a scheme implementation agreement, regulatory approvals and a Board recommendation\n• The release does not say whether payment would be cash, shares or both\n• Total sales were $4.4 billion, up 52%, with fixed term sales up 103% to $2.2 billion\n• Net annuity flows were $1.1 billion, or 6.3% annuity book growth for the quarter\n\nLooking ahead, investors will watch the Board's response, whether a binding offer follows, the form of payment and the regulatory path. Challenger also expects its Fidante and Channel Capital merger to complete later this half. These are company expectations, not results.\n\nIn this two-page investor report, we look at:\n• What the proposal says and what it leaves out\n• How the $11.80 price compares with reference points\n• Where the September quarter sales growth came from\n• What investors should watch next\n\nASX: CGF | 19 October 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #CGF #Challenger #Takeover #EquityResearch #Investing #AustralianStocks #RetirementIncome",
+ "claude_verification": {
+  "marker_hashes_match": true,
+  "review_research_ready": true,
+  "source_checks_passed": true,
+  "verify_clean_pdf_pass": true,
+  "visual_check_done": true,
+  "newer_asx_filings_none_material": true,
+  "buffer_duplicate_check_clear": true,
+  "master_switch_enabled": true
+ }
+}
