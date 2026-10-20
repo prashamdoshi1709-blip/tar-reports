@@ -30,6 +30,7 @@ MODE = os.environ.get("MODE", "live").strip() or "live"
 
 def die(msg):
     print(f"NOT SCHEDULED: {msg}")
+    print(f"::error title=NOT SCHEDULED::{msg}")  # annotation: readable through the check-runs API
     sys.exit(1)
 
 
@@ -105,8 +106,10 @@ def main():
     if MODE == "selftest":
         c = buffer_connection_checks()
         n = len(all_posts())
-        print(f"SELFTEST PASS: API key accepted; organisation and channel '{c['displayName']}' ({c['service']}) verified; "
-              f"{n} existing posts readable; nothing created.")
+        msg = (f"SELFTEST PASS: API key accepted; organisation and channel '{c['displayName']}' ({c['service']}) verified; "
+               f"{n} existing posts readable; nothing created.")
+        print(msg)
+        print(f"::notice title=SELFTEST PASS::{msg}")
         return
     if MODE not in ("live", "dryrun"):
         die(f"unknown MODE {MODE!r}")
@@ -203,6 +206,7 @@ def main():
     duplicate_check(date_line, slot)
     if MODE == "dryrun":
         print("DRYRUN PASS: every check passed; createPost NOT called.")
+        print("::notice title=DRYRUN PASS::every check passed; createPost NOT called.")
         return
     if not time_ok():
         die("2:30 PM cutoff reached before createPost")
@@ -228,6 +232,7 @@ def main():
         gql("mutation($i:DeletePostInput!){deletePost(input:$i){__typename}}", {"i": {"id": pid}})
         die(f"read-back mismatch; deleted post {pid}")
     print(f"SCHEDULED: Buffer post {pid} for {slot.isoformat()} on '{CHANNEL_NAME}' (LinkedIn); PDF sha256 {P['pdf_sha256']}")
+    print(f"::notice title=SCHEDULED::Buffer post {pid} dueAt {slot.isoformat()} sha256 {P['pdf_sha256']}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         open(summary, "a").write(f"### SCHEDULED\n- ticker {tk}\n- Buffer post `{pid}`\n- dueAt {slot.isoformat()}\n- pdf sha256 `{P['pdf_sha256']}`\n")
