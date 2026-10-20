@@ -1,0 +1,44 @@
+name: TAR Buffer Schedule
+
+# Schedules the verified, current-day TAR report in Buffer (official GraphQL API) for 3:00 PM Sydney.
+# Triggered only by a push to main that adds reports/<date>-<TICKER>/publish.json (written by the
+# TAR Auto-Publish routine after ALL of its research/ASX/clean-PDF checks pass).
+# Independent of the GitHub Pages deployment (separate workflow, read-only permissions).
+on:
+  push:
+    branches: [main]
+    paths: ['reports/*/publish.json']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'selftest = Buffer read-only connection test; dryrun = full checks on a payload, no post'
+        type: choice
+        options: [selftest, dryrun]
+        default: selftest
+      payload:
+        description: 'dryrun only: path like reports/2026-10-20-CTD/publish.json'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tar-buffer-schedule
+  cancel-in-progress: false
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Install PDF tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf
+      - name: Verify and schedule
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          MODE: ${{ github.event_name == 'push' && 'live' || inputs.mode }}
+          PAYLOAD: ${{ github.event_name == 'push' && '' || inputs.payload }}
+        run: python3 tools/buffer_schedule.py
