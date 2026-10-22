@@ -5,7 +5,10 @@ name: TAR Buffer Schedule
 # acts ONLY on a complete verified handoff reports/<date>-<TICKER>/publish.json (schema 2) that the 1:58 PM
 # TAR Auto-Publish routine commits after all research, ASX and clean-PDF checks pass. A PDF without that
 # handoff is never published. Buffer is read before every attempt, so the second run cannot duplicate the first.
-# Manual runs can only do a Buffer read-only selftest or a no-post dryrun; they can never create a post.
+# GitHub Actions (not the Claude routine) independently downloads the PDF and cover from the public GitHub Pages
+# URLs and verifies SHA-256, qpdf integrity, 2 pages, 810 x 1012.5 pt, PDF title, fonts and absence of
+# DRAFT / NOT APPROVED wording before anything is scheduled.
+# Manual runs can only do read-only checks (selftest, dryrun, verify, verifytest); they can never create a post.
 on:
   schedule:
     - cron: '17 14 * * 1-5'
@@ -15,12 +18,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'selftest = Buffer read-only connection test; dryrun = full checks on a payload, no post'
+        description: 'selftest = Buffer read-only connection test; dryrun = full checks incl. Buffer read, no post; verify = public Pages + PDF checks only, no Buffer; verifytest = offline negative-case test suite'
         type: choice
-        options: [selftest, dryrun]
+        options: [selftest, dryrun, verify, verifytest]
         default: selftest
       payload:
-        description: 'dryrun only: path like reports/2026-10-19-CGF/publish.json'
+        description: 'dryrun/verify: path like reports/2026-10-19-CGF/publish.json'
         required: false
 
 permissions:
@@ -39,8 +42,12 @@ jobs:
       - name: Install PDF tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf
       - name: Verify and schedule
+        if: github.event_name == 'schedule' || inputs.mode != 'verifytest'
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.mode }}
           PAYLOAD: ${{ github.event_name == 'schedule' && '' || inputs.payload }}
         run: python3 tools/buffer_schedule.py
+      - name: Negative-case verification tests (no network to Buffer, no secrets)
+        if: github.event_name != 'schedule' && inputs.mode == 'verifytest'
+        run: python3 -I tools/test_verify_public.py

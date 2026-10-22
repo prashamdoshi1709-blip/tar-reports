@@ -6,9 +6,14 @@ GraphQL API (https://api.buffer.com). It never researches, edits or rebuilds any
 re-verifies the committed payload and, if every check passes, makes exactly one createPost call.
 
 MODE (env): scheduled (GitHub schedule event only: 2:17 PM and 2:24 PM Sydney) | dryrun (all checks on a named
-            payload, no createPost, time guards skipped) | selftest (secret + Buffer read-only connection test)
+            payload incl. Buffer reads, no createPost, time guards skipped) | verify (read-only: every file and
+            public-URL check on a named payload, no Buffer call at all, time guards skipped) | selftest (secret +
+            Buffer read-only connection test)
 A report is scheduled ONLY from a complete verified handoff reports/<date>-<TICKER>/publish.json (schema 2) written
 by the 1:58 PM routine after all research, ASX and clean-PDF checks passed. A PDF alone never publishes anything.
+The routine never fetches the public URL. THIS script proves, before anything reaches Buffer, that GitHub Pages
+serves exactly the verified PDF and cover (tools/public_verify.py: HTTP 200, real PDF, SHA-256, page count,
+dimensions, PDF title, no DRAFT / NOT APPROVED wording, cover hash).
 Idempotent: Buffer is read before every attempt; an identical existing post is success, never a second post; an
 uncertain createPost is never retried in the same run (Buffer is re-read first). Fail closed: any problem in
 dryrun/selftest -> exit 1; in scheduled mode -> exit 0 with a warning annotation (silent, nothing scheduled). The API key is read from the
@@ -17,6 +22,9 @@ BUFFER_API_KEY environment variable only and is never printed.
 import glob, hashlib, json, os, re, subprocess, sys, time, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from public_verify import verify_public, PublicVerifyError  # noqa: E402
 
 ORG_ID = "6acf0e2ceeddaaa8667d1b55"
 CHANNEL_ID = "6acf0e50778b240e2f03735c"
@@ -131,7 +139,7 @@ def main():
         print(msg)
         print(f"::notice title=SELFTEST PASS::{msg}")
         return
-    if MODE not in ("scheduled", "dryrun"):
+    if MODE not in ("scheduled", "dryrun", "verify"):
         die(f"unknown MODE {MODE!r}")
     if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
         die("scheduling a post is only allowed from the GitHub schedule event")
@@ -154,6 +162,8 @@ def main():
         die(f"bad payload path {path!r}")
     P = json.load(open(path, encoding="utf-8"))
     folder = os.path.dirname(path)
+    if os.path.exists(f"{folder}/SHELVED.md"):
+        die("report folder is marked SHELVED; it is never scheduled")
     tk, iso, company = P["ticker"], P["report_date_iso"], P["company_name"]
     d = datetime.strptime(P["report_date"], "%d %B %Y").date()
     if P.get("schema") != 2 or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
@@ -175,7 +185,7 @@ def main():
 
     def time_ok():
         n = now_syd()
-        return MODE == "dryrun" or (n < cutoff and slot - n >= timedelta(minutes=15))
+        return MODE in ("dryrun", "verify") or (n < cutoff and slot - n >= timedelta(minutes=15))
     if not time_ok():
         die(f"past the 2:30 PM Sydney cutoff or slot too close (now {now_syd().isoformat()})")
 
@@ -219,19 +229,25 @@ def main():
     pdf_url, png_url = f"{PAGES}/{iso}-{tk}/{fname}.pdf", f"{PAGES}/{iso}-{tk}/{fname}_cover.png"
     if P["pdf_url"] != pdf_url or P["cover_url"] != png_url:
         die("handoff PDF/cover URLs do not match the expected committed locations")
-    while True:
-        try:
-            body = urllib.request.urlopen(urllib.request.Request(pdf_url + f"?v={int(time.time())}",
-                                          headers={"User-Agent": "tar-buffer-schedule/1.0"}), timeout=30).read()
-            if hashlib.sha256(body).hexdigest() == P["pdf_sha256"]:
-                urllib.request.urlopen(urllib.request.Request(png_url + f"?v={int(time.time())}",
-                                       headers={"User-Agent": "tar-buffer-schedule/1.0"}), timeout=30).read()
-                break
-        except Exception:
-            pass
-        if not time_ok() or time.time() > START + 360:
-            die("public PDF/cover not live with the verified hash in time")
-        time.sleep(15)
+    # GitHub Actions (not the Claude routine) proves what Pages serves: HTTP 200, real PDF, SHA-256 equal to the
+    # handoff, page count, dimensions, PDF title, no DRAFT / NOT APPROVED wording, cover hash equal to the commit.
+    if MODE == "scheduled":
+        deadline = min(START + 360, cutoff.timestamp() - 60)  # never wait past the 2:30 PM cutoff
+    else:
+        deadline = START + 45
+    print(f"Verifying what GitHub Pages serves: {pdf_url}")
+    try:
+        msg = verify_public(pdf_url, png_url, P["pdf_sha256"], clean_title, sha256(png), deadline)
+    except PublicVerifyError as e:
+        die(f"public PDF verification failed: {e}")
+    print(f"PUBLIC URL VERIFIED: {msg}")
+    if MODE == "scheduled" and not time_ok():
+        die("2:30 PM cutoff reached during public verification")
+    if MODE == "verify":
+        print("VERIFY PASS: handoff payload, committed files and the public GitHub Pages files are all verified; "
+              "no Buffer call was made, nothing created.")
+        print("::notice title=VERIFY PASS::payload, committed files and public Pages files verified; read-only, no Buffer call")
+        return
 
     # ---- Buffer: connection, channel, idempotency (Buffer is read BEFORE every attempt)
     buffer_connection_checks()
