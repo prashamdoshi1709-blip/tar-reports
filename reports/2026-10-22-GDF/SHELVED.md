@@ -1,11 +1,7 @@
-# GDF (Garda Property Group) 22 October 2026 report: SHELVED
+# GDF (Garda Property Group) 22 October 2026: SUPERSEDED, corrected report published once
 
-Status: SHELVED by the owner on 22 Oct 2026. Never publish late, never duplicate. No publish.json exists for this folder and
-tools/buffer_schedule.py refuses any folder containing this file.
-
-Outstanding corrections found when the report was checked against the Portfolio Divestment Presentation (filing 03155572)
-and announcement (03155569). Fix all three before this archived report is ever reused:
-
-1. Morningside: the report omits that the Morningside sale depends on construction completing, and the A$10.9m cost to complete.
-2. NTA reconciliation: must use the September 2026 figures (pre-transaction NTA A$1.65 at Sep-26, A$1.64 at Jun-26) bridging to pro forma A$1.56.
-3. Settlement dates conflict: announcement says 20 November 2026 (six Charter Hall properties); presentation table says 1 December 2026. State both or resolve against the primary source.
+History: the first GDF report was shelved on 22 Oct 2026 for three issues (Morningside construction dependency and A$10.9m cost to complete;
+NTA reconciliation Sep-26 A$1.65 / Jun-26 A$1.64 to pro forma A$1.56; conflicting 20 Nov vs 1 Dec settlement dates).
+All three were corrected from the original ASX announcement (03155569) and Portfolio Divestment Presentation (03155572) and the report
+in this folder is the CORRECTED rebuild. The owner authorised a one-time late publication of it on 22 Oct 2026 (manual publish through the
+Buffer connector, shareNow). This file is kept so tools/buffer_schedule.py never schedules this folder (no publish.json exists): no duplicate.
