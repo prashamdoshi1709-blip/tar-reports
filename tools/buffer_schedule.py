@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """TAR Buffer scheduler (runs in GitHub Actions, stdlib only).
 
+REV 7 (26 Oct 2026 incident: GitHub's cron started the 2:17 and 2:24 PM runs at 2:44 and 2:59 PM, so the 2:30 PM cutoff
+refused a valid TUA handoff and the run still ended green). Fixes: (1) a push of reports/*/publish.json now starts this
+script immediately; (2) frequent crons (every 5 min, 1:00-2:55 PM) retry until the cutoff, now 2:45 PM; (3) after
+scheduling, crons every 10 min until 6 PM reconcile Buffer; (4) every report keeps reports/<date>-<TICKER>/status.json
+with the states HANDOFF_COMMITTED -> BUFFER_SCHEDULED -> BUFFER_SENT -> LINKEDIN_CONFIRMED, or FAILED; (5) a final
+failure makes the run RED (GitHub emails the owner) instead of a silent green warning.
+
 Schedules ONE verified, current-day TAR report in Buffer for 3:00 PM Sydney through Buffer's official
 GraphQL API (https://api.buffer.com). It never researches, edits or rebuilds anything: it only
 re-verifies the committed payload and, if every check passes, makes exactly one createPost call.
@@ -40,11 +47,50 @@ BAD = re.compile(r"not\s*approved|approved\s*for\s*publication|draft", re.I)
 MODE = os.environ.get("MODE", "scheduled").strip() or "scheduled"
 
 
-def die(msg):
+CTX = {"folder": None}
+STATES = ("HANDOFF_COMMITTED", "BUFFER_SCHEDULED", "BUFFER_SENT", "LINKEDIN_CONFIRMED", "FAILED")
+
+
+def load_status(folder):
+    p = f"{folder}/status.json"
+    return json.load(open(p, encoding="utf-8")) if os.path.isfile(p) else {"state": None, "final": False, "history": []}
+
+
+def set_status(folder, state, final=None, **kw):
+    """Single source of truth for where a report is. Written to the repo (committed by the workflow) and the run summary."""
+    assert state in STATES
+    s = load_status(folder)
+    at = now_syd().isoformat()
+    s.update(kw)
+    changed = s.get("state") != state or any(k in kw for k in ("reason", "linkedin_url"))
+    s["state"], s["updated_at"] = state, at
+    s["final"] = bool(final) if final is not None else s.get("final", False)
+    if changed:
+        s["history"].append({"state": state, "at": at, **{k: v for k, v in kw.items() if k in ("reason", "buffer_post_id", "linkedin_url")}})
+    json.dump(s, open(f"{folder}/status.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    line = f"STATUS {state}" + (f" (final)" if s["final"] else "") + (f": {kw['reason']}" if kw.get("reason") else "")
+    print(line)
+    summ = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summ:
+        open(summ, "a").write(f"### {line}\n- report `{folder}`\n- at {at}\n" + (f"- Buffer post `{s.get('buffer_post_id')}`\n" if s.get("buffer_post_id") else "")
+                              + (f"- LinkedIn {s.get('linkedin_url')}\n" if s.get("linkedin_url") else ""))
+    return s
+
+
+def die(msg, transient=False):
+    """transient=True: may heal on the next cron (Pages not deployed yet, Buffer/API hiccup) and is retried until the
+    cutoff. Anything else, or any failure at/after the cutoff, is FINAL: recorded as FAILED and the run goes RED."""
     print(f"NOT SCHEDULED: {msg}")
-    if MODE == "scheduled":  # silent skip: green run, reason kept in a warning annotation
-        print(f"::warning title=NOT SCHEDULED::{msg}")
-        sys.exit(0)
+    if MODE in ("scheduled",):
+        f = CTX.get("folder")
+        final = (not transient) or CTX.get("past_cutoff", False)
+        if f:
+            if final:
+                set_status(f, "FAILED", final=True, reason=msg)
+            else:
+                print(f"RETRY: transient problem, the next cron run tries again until the cutoff ({msg})")
+        print(f"::{'error' if final and f else 'warning'} title=NOT SCHEDULED::{msg}")
+        sys.exit(1 if (final and f) else 0)
     print(f"::error title=NOT SCHEDULED::{msg}")  # annotation: readable through the check-runs API
     sys.exit(1)
 
@@ -66,11 +112,11 @@ def gql(query, variables=None, soft=False):
     except urllib.error.HTTPError as e:
         if soft:
             raise RuntimeError(f"HTTP {e.code}")
-        die(f"Buffer API HTTP {e.code} (401 means the API key is invalid or revoked)")
+        die(f"Buffer API HTTP {e.code} (401 means the API key is invalid or revoked)", transient=e.code >= 500 or e.code == 429)
     except Exception as e:
         if soft:
             raise RuntimeError(type(e).__name__)
-        die(f"Buffer API request failed: {type(e).__name__}")
+        die(f"Buffer API request failed: {type(e).__name__}", transient=True)
     if out.get("errors"):
         if soft:
             raise RuntimeError("API error")
@@ -130,6 +176,32 @@ def sha256(path):
     return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
+def reconcile(folder, st, slot):
+    """Advance BUFFER_SCHEDULED -> BUFFER_SENT -> LINKEDIN_CONFIRMED from what Buffer itself reports. Read-only on Buffer."""
+    pid = st["buffer_post_id"]
+    p = gql("query($i:PostInput!){post(input:$i){id status dueAt sentAt externalLink error{message}}}", {"i": {"id": pid}})["post"]
+    if p["status"] == "sent":
+        link = p.get("externalLink") or ""
+        if "linkedin.com" in link:
+            set_status(folder, "LINKEDIN_CONFIRMED", final=True, buffer_post_id=pid, sent_at=p.get("sentAt"), linkedin_url=link)
+        else:
+            set_status(folder, "BUFFER_SENT", buffer_post_id=pid, sent_at=p.get("sentAt"))
+            print("Buffer says sent but no LinkedIn URL yet; the next reconcile run checks again.")
+            if now_syd() > slot + timedelta(hours=2):
+                set_status(folder, "FAILED", final=True, buffer_post_id=pid, reason="Buffer says sent but returned no LinkedIn URL after 2 hours")
+                sys.exit(1)
+    elif p["status"] in ("error",):
+        set_status(folder, "FAILED", final=True, buffer_post_id=pid, reason=f"Buffer post error: {(p.get('error') or {}).get('message')}")
+        print("::error title=BUFFER POST FAILED::see status.json")
+        sys.exit(1)
+    elif now_syd() > slot + timedelta(minutes=30):
+        set_status(folder, "FAILED", final=True, buffer_post_id=pid, reason=f"Buffer post still '{p['status']}' 30 min after the slot")
+        print("::error title=BUFFER POST STALLED::see status.json")
+        sys.exit(1)
+    else:
+        print(f"Buffer post {pid} is '{p['status']}', due {p['dueAt']}. Waiting.")
+
+
 def main():
     if MODE == "selftest":
         c = buffer_connection_checks()
@@ -141,8 +213,8 @@ def main():
         return
     if MODE not in ("scheduled", "dryrun", "verify"):
         die(f"unknown MODE {MODE!r}")
-    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") != "schedule":
-        die("scheduling a post is only allowed from the GitHub schedule event")
+    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "push"):
+        die("scheduling a post is only allowed from the GitHub schedule or push event")
     if MODE == "scheduled" and os.environ.get("GITHUB_REF") != "refs/heads/main":
         die("scheduling a post is only allowed from main")
 
@@ -181,13 +253,25 @@ def main():
             die("not a full ASX trading day")
         if not json.load(open("config/auto-publish.json")).get("enabled") is True:
             die("AUTO-PUBLISH OFF (config/auto-publish.json enabled is not true)")
-    cutoff = datetime(d.year, d.month, d.day, 14, 30, tzinfo=SYD)
+    cutoff = datetime(d.year, d.month, d.day, 14, 45, tzinfo=SYD)  # Buffer needs only seconds; slot 3:00 PM keeps 15 min margin
 
     def time_ok():
         n = now_syd()
-        return MODE in ("dryrun", "verify") or (n < cutoff and slot - n >= timedelta(minutes=15))
+        return MODE in ("dryrun", "verify") or (n < cutoff and slot - n >= timedelta(minutes=10))
+    if MODE == "scheduled":
+        CTX["folder"], CTX["past_cutoff"] = folder, not time_ok()
+        st = load_status(folder)
+        if st.get("final"):
+            print(f"STATUS already final: {st.get('state')} ({st.get('reason') or st.get('linkedin_url') or ''}). Nothing to do.")
+            return
+        if st.get("state") is None:
+            set_status(folder, "HANDOFF_COMMITTED", handoff_created_at=P.get("handoff_created_at"),
+                       handoff_commit=os.environ.get("GITHUB_SHA"), pdf_sha256=P.get("pdf_sha256"))
+        if st.get("state") in ("BUFFER_SCHEDULED", "BUFFER_SENT") and st.get("buffer_post_id"):
+            reconcile(folder, st, slot)
+            return
     if not time_ok():
-        die(f"past the 2:30 PM Sydney cutoff or slot too close (now {now_syd().isoformat()})")
+        die(f"past the 2:45 PM Sydney cutoff or slot too close (now {now_syd().isoformat()})")
 
     # ---- payload hygiene (mirrors the routine's Step 2e)
     for k in ("claude_verification", "package_id", "review_record_id", "review_status", "pdf_sha256", "pdf_url",
@@ -232,17 +316,17 @@ def main():
     # GitHub Actions (not the Claude routine) proves what Pages serves: HTTP 200, real PDF, SHA-256 equal to the
     # handoff, page count, dimensions, PDF title, no DRAFT / NOT APPROVED wording, cover hash equal to the commit.
     if MODE == "scheduled":
-        deadline = min(START + 360, cutoff.timestamp() - 60)  # never wait past the 2:30 PM cutoff
+        deadline = min(START + 360, cutoff.timestamp() - 60)  # never wait past the cutoff
     else:
         deadline = START + 45
     print(f"Verifying what GitHub Pages serves: {pdf_url}")
     try:
         msg = verify_public(pdf_url, png_url, P["pdf_sha256"], clean_title, sha256(png), deadline)
     except PublicVerifyError as e:
-        die(f"public PDF verification failed: {e}")
+        die(f"public PDF verification failed: {e}", transient=True)
     print(f"PUBLIC URL VERIFIED: {msg}")
     if MODE == "scheduled" and not time_ok():
-        die("2:30 PM cutoff reached during public verification")
+        die("2:45 PM cutoff reached during public verification")
     if MODE == "verify":
         print("VERIFY PASS: handoff payload, committed files and the public GitHub Pages files are all verified; "
               "no Buffer call was made, nothing created.")
@@ -264,12 +348,14 @@ def main():
         return
     if same and len(conflicts) == len(same):
         print(f"ALREADY SCHEDULED (idempotent): Buffer post {same[0]['id']} status {same[0]['status']}. Nothing created.")
+        if MODE == "scheduled":
+            set_status(folder, "BUFFER_SCHEDULED", buffer_post_id=same[0]["id"], due_at=slot.isoformat())
         print(f"::notice title=ALREADY SCHEDULED::Buffer post {same[0]['id']} ({same[0]['status']}); no new post created")
         return
     if conflicts:
         die(f"duplicate/conflict: existing Buffer post(s) {[p['id'] for p in conflicts]} are not identical to this report")
     if not time_ok():
-        die("2:30 PM cutoff reached before createPost")
+        die("2:45 PM cutoff reached before createPost")
 
     # ---- the single createPost call; an uncertain outcome is never retried, Buffer is re-read first
     inp = {"channelId": CHANNEL_ID, "schedulingType": "automatic", "mode": "customScheduled",
@@ -280,7 +366,7 @@ def main():
         res = gql("mutation($i:CreatePostInput!){createPost(input:$i){__typename ... on PostActionSuccess{post{id}}"
                   " ... on MutationError{message}}}", {"i": inp}, soft=True)["createPost"]
         if res["__typename"] != "PostActionSuccess":
-            die(f"createPost refused: {res.get('message')}")
+            die(f"createPost refused: {res.get('message')}")  # final: Buffer rejected it
         pid = res["post"]["id"]
     except RuntimeError as e:
         time.sleep(5)  # outcome UNCERTAIN: look at Buffer, never resend
@@ -292,7 +378,7 @@ def main():
             print(f"UNCERTAIN createPost ({e}) but Buffer shows the post: {again[0]['id']}. Not retried.")
             pid = again[0]["id"]
         else:
-            die(f"createPost outcome uncertain ({e}) and no matching post found; NOT retried (next run checks Buffer first)")
+            die(f"createPost outcome uncertain ({e}) and no matching post found; NOT retried now (next run checks Buffer first)", transient=True)
 
     # ---- read back; delete only this post if anything is off
     p = gql("query($i:PostInput!){post(input:$i){id status dueAt channelId text assets{source thumbnail ... on DocumentAsset{document{title}}}}}",
@@ -304,6 +390,8 @@ def main():
     if not ok:
         gql("mutation($i:DeletePostInput!){deletePost(input:$i){__typename}}", {"i": {"id": pid}})
         die(f"read-back mismatch; deleted post {pid}")
+    if MODE == "scheduled":
+        set_status(folder, "BUFFER_SCHEDULED", buffer_post_id=pid, due_at=slot.isoformat())
     print(f"SCHEDULED: Buffer post {pid} for {slot.isoformat()} on '{CHANNEL_NAME}' (LinkedIn); PDF sha256 {P['pdf_sha256']}")
     print(f"::notice title=SCHEDULED::Buffer post {pid} dueAt {slot.isoformat()} sha256 {P['pdf_sha256']}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")

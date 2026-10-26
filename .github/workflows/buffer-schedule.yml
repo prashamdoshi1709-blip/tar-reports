@@ -1,19 +1,21 @@
 name: TAR Buffer Schedule
 
-# Schedules the verified, current-day TAR report in Buffer (official GraphQL API) for 3:00 PM Sydney.
-# It runs on GitHub's timezone-aware schedule (Australia/Sydney) at 2:17 PM and 2:24 PM on weekdays and
-# acts ONLY on a complete verified handoff reports/<date>-<TICKER>/publish.json (schema 2) that the 1:58 PM
-# TAR Auto-Publish routine commits after all research, ASX and clean-PDF checks pass. A PDF without that
-# handoff is never published. Buffer is read before every attempt, so the second run cannot duplicate the first.
-# GitHub Actions (not the Claude routine) independently downloads the PDF and cover from the public GitHub Pages
-# URLs and verifies SHA-256, qpdf integrity, 2 pages, 810 x 1012.5 pt, PDF title, fonts and absence of
-# DRAFT / NOT APPROVED wording before anything is scheduled.
-# Manual runs can only do read-only checks (selftest, dryrun, verify, verifytest); they can never create a post.
+# REV 7 (26 Oct 2026). Schedules the verified, current-day TAR report in Buffer (official GraphQL API) for 3:00 PM Sydney.
+# Why this changed: on 26 Oct GitHub started the 2:17 PM and 2:24 PM cron runs at 2:44 PM and 2:59 PM (GitHub cron is best
+# effort and was 25-35 min late on every day logged), so the 2:30 PM cutoff refused a valid handoff and the run ended green.
+# Now: (1) PUSH of reports/*/publish.json runs immediately; (2) cron every 5 min 1:00-2:55 PM Sydney retries until the
+# 2:45 PM cutoff (idempotent: Buffer is read before every attempt); (3) cron every 10 min 3:00-5:50 PM reconciles Buffer;
+# (4) tools/buffer_schedule.py keeps reports/<date>-<TICKER>/status.json: HANDOFF_COMMITTED, BUFFER_SCHEDULED, BUFFER_SENT,
+# LINKEDIN_CONFIRMED or FAILED (committed back to main by this workflow); (5) a final failure turns the run RED.
+# A PDF without a verified publish.json (schema 2) is never published. Manual runs can only do read-only checks.
 on:
+  push:
+    branches: [main]
+    paths: ['reports/*/publish.json']
   schedule:
-    - cron: '17 14 * * 1-5'
+    - cron: '*/5 13-14 * * 1-5'
       timezone: 'Australia/Sydney'
-    - cron: '24 14 * * 1-5'
+    - cron: '*/10 15-17 * * 1-5'
       timezone: 'Australia/Sydney'
   workflow_dispatch:
     inputs:
@@ -27,7 +29,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: tar-buffer-schedule
@@ -39,15 +41,38 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+      - name: Is there anything to do?
+        id: gate
+        run: |
+          D=$(TZ=Australia/Sydney date +%F)
+          echo "Sydney now: $(TZ=Australia/Sydney date -Iseconds)"
+          go=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then go=true
+          elif ls reports/$D-*/publish.json >/dev/null 2>&1; then
+            if grep -qs '"final": true' reports/$D-*/status.json; then echo "status already final, skipping"; else go=true; fi
+          else echo "no handoff for $D yet"; fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
       - name: Install PDF tools
+        if: steps.gate.outputs.go == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf
-      - name: Verify and schedule
-        if: github.event_name == 'schedule' || inputs.mode != 'verifytest'
+      - name: Verify, schedule and reconcile
+        id: run
+        if: steps.gate.outputs.go == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'verifytest')
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
-          MODE: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.mode }}
-          PAYLOAD: ${{ github.event_name == 'schedule' && '' || inputs.payload }}
+          MODE: ${{ github.event_name != 'workflow_dispatch' && 'scheduled' || inputs.mode }}
+          PAYLOAD: ${{ github.event_name != 'workflow_dispatch' && '' || inputs.payload }}
         run: python3 tools/buffer_schedule.py
+      - name: Commit status.json
+        if: always() && github.event_name != 'workflow_dispatch' && steps.gate.outputs.go == 'true'
+        run: |
+          git config user.name "tar-status-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add reports/*/status.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -q -m "status: $(git diff --cached --name-only | head -1) $(date -u +%H:%MZ)"
+            for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && break; sleep 4; done
+          fi
       - name: Negative-case verification tests (no network to Buffer, no secrets)
-        if: github.event_name != 'schedule' && inputs.mode == 'verifytest'
-        run: python3 -I tools/test_verify_public.py
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'verifytest'
+        run: python3 -I tools/test_verify_public.py && python3 -I tools/test_status.py
