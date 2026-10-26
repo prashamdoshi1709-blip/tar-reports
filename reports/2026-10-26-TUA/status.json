@@ -1,0 +1,32 @@
+{
+  "state": "LINKEDIN_CONFIRMED",
+  "final": true,
+  "updated_at": "2026-10-27T01:10:00+11:00",
+  "buffer_post_id": "6adf5ee613bbb91ebaf2084a",
+  "sent_at": "2026-10-26T14:08:59.934Z",
+  "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7520486642072133632",
+  "handoff_commit": "0c8d39d11505dc9d7ddad925ed6cc0ac63763b70",
+  "pdf_sha256": "c7e75da11ef87fedb9223490c0e03516555b377eef3e0142ff0991d717e88429",
+  "history": [
+    {
+      "state": "HANDOFF_COMMITTED",
+      "at": "2026-10-26T14:03:30+11:00"
+    },
+    {
+      "state": "FAILED",
+      "at": "2026-10-26T14:44:55+11:00",
+      "reason": "Not scheduled: GitHub cron started the 2:17 PM run at 2:44 PM and the 2:24 PM run at 2:59 PM, both after the old 2:30 PM cutoff (run ended green). Recorded retrospectively."
+    },
+    {
+      "state": "BUFFER_SENT",
+      "at": "2026-10-27T01:08:59+11:00",
+      "buffer_post_id": "6adf5ee613bbb91ebaf2084a",
+      "reason": "One-time late publication authorised by the owner, created through Buffer shareNow after Actions verified the public PDF (run 40336477324)."
+    },
+    {
+      "state": "LINKEDIN_CONFIRMED",
+      "at": "2026-10-27T01:10:00+11:00",
+      "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7520486642072133632"
+    }
+  ]
+}
