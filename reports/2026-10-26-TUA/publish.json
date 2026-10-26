@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "mode": "LIVE",
+  "ticker": "TUA",
+  "company_name": "Tuas Limited",
+  "report_date": "26 October 2026",
+  "report_date_iso": "2026-10-26",
+  "package_id": "2026-10-26_1046_1a1757706b436056_a1",
+  "review_record_id": "1gKgHLNFRS_JuxhLGdpj8wvb6Hsdg6vGP",
+  "review_status": "RESEARCH-READY",
+  "marker_sha256": "450b98e188945685e4cd30ebd1a97e1461f0d3822d328fe4f549ee014d094058",
+  "handoff_created_at": "2026-10-26T14:03:28+11:00",
+  "pdf_sha256": "c7e75da11ef87fedb9223490c0e03516555b377eef3e0142ff0991d717e88429",
+  "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-26-TUA/TAR_TUA_26Oct2026.pdf",
+  "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-26-TUA/TAR_TUA_26Oct2026_cover.png",
+  "title": "Tuas: IMDA Show Cause Notice Issued to Simba",
+  "caption": "The Announcement Room | Tuas Limited (TUA)\n\nTuas told the ASX on 26 October 2026 that its Singapore subsidiary, Simba Telecom, received a Notice to Show Cause from the Infocomm Media Development Authority (IMDA). The IMDA has asked why it should not make certain findings against Simba, and Simba's response is due by 16 November 2026.\n\nThe notice sets out six allegations, including alleged unauthorised use of spectrum at about 92 sites between 2023 and 2026 and alleged non-compliance with an IMDA production order. These are allegations only. The IMDA has not reached a conclusion and Tuas says no findings have been made or confirmed.\n\nKey points:\n\n• Simba was asked to respond to six allegations, with a response due 16 November 2026\n• Alleged 2100 MHz dynamic spectrum sharing at about 133 sites in 2022 and 2023\n• Alleged use of 2340-2360 MHz spectrum at about 92 sites between 2023 and 2026\n• Possible actions listed by the IMDA range from further licence conditions to spectrum or licence suspension or cancellation, or a financial penalty\n• Penalty cap is the higher of 10% of relevant annual turnover or $1 million (currency not stated in the notice)\n• FY26 revenue was S$187.6m, up 24%, and underlying EBITDA was S$83.8m, up 22% (year to 31 July 2026, before the notice)\n• Cash was S$498.8m at 31 July 2026\n\nLooking ahead, the IMDA has not decided whether to act. Investors will be watching Simba's response, any IMDA decision on findings, penalties or licence conditions, and any further ASX updates from Tuas. As at 23 September 2026 the Board had made no decision on use of the capital raised for the lapsed M1 acquisition. Tuas also expects incremental cyber security spend of S$15-30m in FY27.\n\nIn this two-page investor report, we look at:\n\n• What the IMDA has alleged and what it could do\n• The timeline from the M1 deal to the notice\n• FY26 results that pre-date the notice\n• Cash, FY27 costs and what to watch next\n\nASX: TUA | 26 October 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #TUA #Tuas #Simba #Telecommunications #EquityResearch #AustralianStocks\n",
+  "claude_verification": {
+    "marker_hashes_match": true,
+    "review_research_ready": true,
+    "source_checks_passed": true,
+    "verify_clean_pdf_pass": true,
+    "visual_check_done": true,
+    "newer_asx_filings_none_material": true,
+    "buffer_duplicate_check_clear": true,
+    "master_switch_enabled": true
+  }
+}
