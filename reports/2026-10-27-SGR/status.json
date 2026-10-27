@@ -2,7 +2,7 @@
   "state": "HANDOFF_COMMITTED",
   "final": false,
   "updated_at": "2026-10-27T14:00:00+11:00",
-  "pdf_sha256": "6b93e88372e683b0a820809563412a474c1791ac288262e70ee1b9838ce1b41f",
+  "pdf_sha256": "9d36393d2c7c60b3c10f99ef89265866e9adc7c4e99dd7343a993d58ac85df64",
   "history": [
     {
       "state": "HANDOFF_COMMITTED",
