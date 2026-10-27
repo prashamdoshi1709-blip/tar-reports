@@ -1,13 +1,27 @@
 {
-  "state": "HANDOFF_COMMITTED",
-  "final": false,
-  "updated_at": "2026-10-27T14:00:00+11:00",
+  "state": "LINKEDIN_CONFIRMED",
+  "final": true,
+  "updated_at": "2026-10-27T15:55:00+11:00",
   "pdf_sha256": "9d36393d2c7c60b3c10f99ef89265866e9adc7c4e99dd7343a993d58ac85df64",
   "history": [
     {
       "state": "HANDOFF_COMMITTED",
       "at": "2026-10-27T14:00:00+11:00",
       "reason": "Manual one-time late path: no PDF_DRAFT_COMPLETE marker was produced by the 1:15 PM task. Report built from independently verified primary ASX source; publish.json deliberately not committed so the automatic workflow does not run."
+    },
+    {
+      "state": "BUFFER_SENT",
+      "at": "2026-10-27T15:54:38+11:00",
+      "buffer_post_id": "6ae02e78457d00458c19aa65",
+      "reason": "One-time late publication authorised by the owner via Buffer shareNow after Actions verify run 40451924016 passed on the public PDF."
+    },
+    {
+      "state": "LINKEDIN_CONFIRMED",
+      "at": "2026-10-27T15:55:00+11:00",
+      "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7520709520579444736"
     }
-  ]
+  ],
+  "buffer_post_id": "6ae02e78457d00458c19aa65",
+  "sent_at": "2026-10-27T04:54:38.282Z",
+  "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7520709520579444736"
 }
