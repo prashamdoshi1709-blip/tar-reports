@@ -1,0 +1,13 @@
+{
+  "state": "HANDOFF_COMMITTED",
+  "final": false,
+  "updated_at": "2026-10-27T14:00:00+11:00",
+  "pdf_sha256": "6b93e88372e683b0a820809563412a474c1791ac288262e70ee1b9838ce1b41f",
+  "history": [
+    {
+      "state": "HANDOFF_COMMITTED",
+      "at": "2026-10-27T14:00:00+11:00",
+      "reason": "Manual one-time late path: no PDF_DRAFT_COMPLETE marker was produced by the 1:15 PM task. Report built from independently verified primary ASX source; publish.json deliberately not committed so the automatic workflow does not run."
+    }
+  ]
+}
