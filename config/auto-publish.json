@@ -1,4 +1,8 @@
 {
   "enabled": true,
-  "note": "Master switch read by the TAR auto-publish routine. Must be true AND the routine must be enabled. Activated 19 Oct 2026 on Prasham's written authorisation."
+  "note": "Master switch read by the TAR auto-publish routine. Must be true AND the routine must be enabled. Activated 19 Oct 2026 on Prasham's written authorisation.",
+  "material_filings_contract": {
+    "schema3_accepted": false,
+    "note": "Schema 3 (material-filings/1) handoffs are rejected (retried until the cutoff) while false. Set true ONLY after the 1:15 PM (Amendment A) and 1:58 PM (Amendment B) routine instructions are updated and verified. Schema 2 is unaffected."
+  }
 }

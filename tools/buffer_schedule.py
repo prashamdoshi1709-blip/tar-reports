@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from public_verify import verify_public, PublicVerifyError  # noqa: E402
+import filing_contract as fc  # noqa: E402
 
 ORG_ID = "6acf0e2ceeddaaa8667d1b55"
 CHANNEL_ID = "6acf0e50778b240e2f03735c"
@@ -238,8 +239,8 @@ def main():
         die("report folder is marked SHELVED; it is never scheduled")
     tk, iso, company = P["ticker"], P["report_date_iso"], P["company_name"]
     d = datetime.strptime(P["report_date"], "%d %B %Y").date()
-    if P.get("schema") != 2 or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
-        die("payload schema/mode/date/folder mismatch (schema 2 required)")
+    if P.get("schema") not in (2, 3) or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
+        die("payload schema/mode/date/folder mismatch (schema 2 or 3 required)")
     if not re.fullmatch(r"[A-Z0-9]{2,5}", tk):
         die("bad ticker")
 
@@ -278,14 +279,24 @@ def main():
               "cover_url", "title", "caption", "marker_sha256", "handoff_created_at"):
         if k not in P:
             die(f"payload missing {k}")
-    cv = P["claude_verification"]
-    need = ["marker_hashes_match", "review_research_ready", "source_checks_passed", "verify_clean_pdf_pass",
-            "visual_check_done", "newer_asx_filings_none_material", "buffer_duplicate_check_clear",
-            "master_switch_enabled"]
     if P["review_status"] != "RESEARCH-READY":
         die("handoff review_status is not RESEARCH-READY")
-    if not all(cv.get(k) is True for k in need):
-        die("claude_verification flags are not all true: " + ",".join(k for k in need if cv.get(k) is not True))
+    # Material-filings contract (tools/filing_contract.py). Schema 2: unchanged, all eight flags true. Schema 3: structured
+    # filing_verification record. GitHub validates structure, consistency and report-text evidence only; the reading,
+    # classification and reconciliation of ASX filings remain Claude's attestations (see fc.ATTESTATION_NOTICE).
+    if P["schema"] == 3:
+        gate = json.load(open("config/auto-publish.json"))
+        if not fc.gate_open(gate):
+            die("SCHEMA3_BLOCKED: schema 3 handoffs are not accepted until config/auto-publish.json "
+                "material_filings_contract.schema3_accepted is true (set only after the 1:15 PM and 1:58 PM routine "
+                "instructions are updated and verified)", transient=True)
+    try:
+        FILING = fc.validate(P)
+    except fc.ContractError as e:
+        die(f"filing contract blocker {e.code}: {e.msg}")
+    print(f"FILING CONTRACT OK: schema {FILING['schema']}, outcome {FILING['outcome']}, material {FILING['material']}")
+    if P["schema"] == 3:
+        print(fc.ATTESTATION_NOTICE)
     title, cap = P["title"], P["caption"]
     if len(title) >= 55 or "\n" in title or "—" in title or BAD.search(title):
         die("title invalid (length, newline, em dash or forbidden wording)")
@@ -308,6 +319,14 @@ def main():
     print(r.stdout.strip())
     if r.returncode != 0 or "PASS" not in r.stdout:
         die("verify_clean_pdf.py did not PASS")
+    if P["schema"] == 3:  # material-filing implications must really appear in the committed caption / PDF text
+        t = subprocess.run(["pdftotext", "-layout", pdf, "-"], capture_output=True, text=True)
+        if t.returncode != 0:
+            die("pdftotext failed; cannot check report evidence for material filings")
+        try:
+            fc.check_report_evidence(P, cap, t.stdout)
+        except fc.ContractError as e:
+            die(f"filing contract blocker {e.code}: {e.msg}")
 
     # ---- public URLs live and identical (Pages)
     pdf_url, png_url = f"{PAGES}/{iso}-{tk}/{fname}.pdf", f"{PAGES}/{iso}-{tk}/{fname}_cover.png"

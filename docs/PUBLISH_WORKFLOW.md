@@ -34,3 +34,6 @@ The script re-verifies: date is today in Sydney, ASX trading day, config/auto-pu
 Manual runs (workflow_dispatch) can only do selftest or dryrun; they never create posts. Failures in scheduled mode are silent (green run, reason in a warning annotation).
 Manual modes (22 Oct 2026): `verify` = full handoff + public Pages checks, no Buffer call, time guards skipped; `verifytest` = offline negative-case suite (tools/test_verify_public.py: wrong hash, missing file, HTML instead of PDF, truncated, 3 pages, wrong size, wrong title, NOT APPROVED text, bad cover, bad handoff fields, SHELVED).
 A report folder containing SHELVED.md is never scheduled. reports/2026-10-22-GDF is SHELVED (see its SHELVED.md for outstanding corrections).
+
+## Material filings contract (27 Oct 2026)
+Schema 3 (`material-filings/1`) lets a handoff carry material later filings that were fully assessed and incorporated. Schema 2 is unchanged. Schema 3 stays blocked until `config/auto-publish.json` `material_filings_contract.schema3_accepted` is true (after routine Amendments A and B are applied and verified). See `docs/MATERIAL_FILINGS_CONTRACT.md` and `docs/amendments/`. The schema 2 flag list above is still the schema 2 contract.

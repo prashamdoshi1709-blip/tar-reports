@@ -75,4 +75,4 @@ jobs:
           fi
       - name: Negative-case verification tests (no network to Buffer, no secrets)
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'verifytest'
-        run: python3 -I tools/test_verify_public.py && python3 -I tools/test_status.py
+        run: python3 -I tools/test_verify_public.py && python3 -I tools/test_status.py && python3 -I tools/test_filing_contract.py
