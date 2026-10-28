@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "mode": "LIVE",
+  "ticker": "SDV",
+  "company_name": "SciDev Limited",
+  "report_date": "28 October 2026",
+  "report_date_iso": "2026-10-28",
+  "package_id": "2026-10-28_1047_1a17fc34ef4de647_a101",
+  "review_record_id": "1IlKwdfv-Ezm5agMKUUK2C-P2JS_HOnXe",
+  "review_status": "RESEARCH-READY",
+  "marker_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "handoff_created_at": "2026-10-28T17:10:00+11:00",
+  "pdf_sha256": "a3e4f0641e948688713bd7e80654bdeff8760804397752d9fb59ce039c726161",
+  "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-28-SDV/TAR_SDV_28Oct2026.pdf",
+  "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-28-SDV/TAR_SDV_28Oct2026_cover.png",
+  "title": "SciDev: $8M MaxiFlox Contracts Awarded",
+  "caption": "The Announcement Room | SciDev Limited (SDV)\n\nSciDev Limited announced three MaxiFlox chemistry contracts with a total committed value of about $8 million, across mining, utilities and infrastructure. The company says each contract followed a competitive tender and expects about $5 million of revenue from them in FY27, of which about $3 million is incremental to FY26.\n\nThe announcement follows a weaker FY26, when revenue fell to $85.5 million from $103.4 million and underlying EBITDA fell to $3.6 million from $7.1 million. Recurring revenue rose to 38% of FY26 revenue from 30%.\n\nKey points:\n• Three contracts, about $8 million total committed value\n• Initial terms of about one to three years\n• Extension options worth up to about $4 million, or about $12 million if all are exercised\n• About $5 million of FY27 revenue expected, a company expectation and not a result\n• About $14 million of new chemistry contracts in calendar 2026, including the $6 million Newmont contract\n• FY26 net cash of $6.8 million at 30 June 2026\n\nLooking ahead, the extra $4 million depends on customers exercising options, and the FY27 revenue is an estimate. The company has not disclosed contract margins.\n\nIn this two-page investor report, we look at:\n• What the three contracts cover\n• How the contract value compares with FY26 results\n• Why the $5 million FY27 expectation is small against group revenue\n• What investors should watch next\n\nASX: SDV | 28 October 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #SDV #SciDev #WaterTreatment #EquityResearch #Investing #AustralianStocks\n",
+  "claude_verification": {
+    "marker_hashes_match": true,
+    "review_research_ready": true,
+    "source_checks_passed": true,
+    "verify_clean_pdf_pass": true,
+    "visual_check_done": true,
+    "newer_asx_filings_none_material": true,
+    "buffer_duplicate_check_clear": true,
+    "master_switch_enabled": true
+  }
+}
