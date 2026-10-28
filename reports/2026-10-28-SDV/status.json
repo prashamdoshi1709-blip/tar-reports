@@ -1,0 +1,14 @@
+{
+  "state": "LINKEDIN_CONFIRMED",
+  "final": true,
+  "updated_at": "2026-10-28T17:12:00+11:00",
+  "pdf_sha256": "a3e4f0641e948688713bd7e80654bdeff8760804397752d9fb59ce039c726161",
+  "history": [
+    {"state": "HANDOFF_COMMITTED", "at": "2026-10-28T17:00:00+11:00", "reason": "Manual one-time late path authorised by the owner on 28 Oct 2026: no production PDF_DRAFT_COMPLETE marker (1:15 PM task blocked: package had no source PDFs). Report built from the isolated recovery package (review a101) and re-checked against ASX filings. publish.json deliberately not committed to main; schema 3 stays disabled."},
+    {"state": "BUFFER_SENT", "at": "2026-10-28T17:08:33+11:00", "buffer_post_id": "6ae1914b52154ef9974f301b", "reason": "Buffer shareNow after Actions verify run 40641772043 passed on the public PDF."},
+    {"state": "LINKEDIN_CONFIRMED", "at": "2026-10-28T17:08:33+11:00", "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7521090510451560448"}
+  ],
+  "buffer_post_id": "6ae1914b52154ef9974f301b",
+  "sent_at": "2026-10-28T06:08:33.394Z",
+  "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7521090510451560448"
+}
