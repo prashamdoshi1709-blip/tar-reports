@@ -1,0 +1,10 @@
+{
+  "manual": true,
+  "company_name": "SciDev Limited",
+  "ticker": "SDV",
+  "pdf_sha256": "a3e4f0641e948688713bd7e80654bdeff8760804397752d9fb59ce039c726161",
+  "cover_sha256": "96b1a6f3f1fd433f8ebd165d1f061c390bc168c437289c56be8f36f12abbfe9e",
+  "title": "SciDev: $8M MaxiFlox Contracts Awarded",
+  "caption_sha256": "d19dff294fe94446ca985cc3293119c8030db3684375ecfbe36c43c230e790f3",
+  "note": "Manual marker for the owner-authorised one-time late path (28 Oct 2026). Report built from the isolated SDV recovery package (review a101, hashes verified) and re-checked against ASX filings via FinancialFilings. No publish.json by design; schema 3 stays disabled."
+}
