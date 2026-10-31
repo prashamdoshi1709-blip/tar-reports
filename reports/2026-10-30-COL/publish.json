@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "mode": "LIVE",
+  "ticker": "COL",
+  "company_name": "Coles Group Limited",
+  "report_date": "30 October 2026",
+  "report_date_iso": "2026-10-30",
+  "package_id": "2026-10-30_1047_1a18a0f640f4c7c7_manual",
+  "review_record_id": "manual-late-publication-owner-authorised-31-Oct-2026",
+  "review_status": "RESEARCH-READY",
+  "marker_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "handoff_created_at": "2026-10-31T12:00:00+11:00",
+  "pdf_sha256": "914b5bd1a148e68cde51f091993c96426a6eb530cdc12ee1b91cd08ddb740e40",
+  "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-30-COL/TAR_COL_30Oct2026.pdf",
+  "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-10-30-COL/TAR_COL_30Oct2026_cover.png",
+  "title": "Coles: Supermarkets Sales +3.6%, 1H EBIT Flat",
+  "caption": "The Announcement Room | Coles Group Limited (COL)\n\nColes Group reported 2027 first quarter Group sales revenue of $11,209 million, up 2.2%, for the 13 weeks to 27 September 2026. Supermarkets sales rose 3.6% to $10,320 million, with comparable sales growth of 2.7% against 4.6% a year earlier.\n\nColes also said it now expects first half Supermarkets EBIT (excluding significant items) to be in line with the prior corresponding period. It cited elevated competitor promotions, investment in value and higher fuel-related costs. The release does not give a dollar figure for the fuel impact.\n\nKey points:\n\n• Group sales revenue was $11,209m, up 2.2%\n• Supermarkets sales were $10,320m, up 3.6%, with comparable growth of 2.7%\n• Supermarkets eCommerce sales rose 22.9% to $1,623m, or 15.7% of sales\n• Liquor sales fell 1.3% to $831m\n• Other segment revenue fell 62.8% to $58m, relating to the Viva Energy supply agreement that expires in November 2026\n• Supermarkets price inflation was 1.1% (1.0% excluding tobacco)\n\nLooking ahead, Coles says Supermarkets sales in the first four weeks of the second quarter were resilient but growth had moderated compared with Q1. The first half EBIT outlook is a company expectation, not a result, and the half-year result will be the first test of it.\n\nIn this two-page investor report, we look at:\n\n• Where the 2.2% Group growth came from, and why it is below Supermarkets growth\n• eCommerce, inflation and comparable sales\n• What Coles said about fuel costs and first half EBIT\n• What investors should watch next\n\nASX: COL | 30 October 2026 (published late, on 31 October 2026)\n\nGeneral information only. Not financial advice.\n\n#ASX #COL #ColesGroup #Supermarkets #EquityResearch #Investing #AustralianStocks\n",
+  "claude_verification": {
+    "marker_hashes_match": true,
+    "review_research_ready": true,
+    "source_checks_passed": true,
+    "verify_clean_pdf_pass": true,
+    "visual_check_done": true,
+    "newer_asx_filings_none_material": true,
+    "buffer_duplicate_check_clear": true,
+    "master_switch_enabled": true
+  }
+}
