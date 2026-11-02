@@ -1,0 +1,21 @@
+{
+  "state": "BUFFER_SCHEDULED",
+  "final": false,
+  "history": [
+    {
+      "state": "HANDOFF_COMMITTED",
+      "at": "2026-11-02T14:06:21.666278+11:00"
+    },
+    {
+      "state": "BUFFER_SCHEDULED",
+      "at": "2026-11-02T14:06:53.437633+11:00",
+      "buffer_post_id": "6ae7fe4d386eccf912577079"
+    }
+  ],
+  "handoff_created_at": "2026-11-02T14:06:05+11:00",
+  "handoff_commit": "2c90c9da04800731ff0c3f4cef3c0377a0b5bd81",
+  "pdf_sha256": "5d86444b5dd4ba872a76fd2b04f0c3507dd0312d8ca034c795b3bbec4fcca232",
+  "updated_at": "2026-11-02T14:06:53.437633+11:00",
+  "buffer_post_id": "6ae7fe4d386eccf912577079",
+  "due_at": "2026-11-02T15:00:00+11:00"
+}
