@@ -1,0 +1,28 @@
+{
+ "schema": 2,
+ "mode": "LIVE",
+ "ticker": "A4N",
+ "company_name": "Alpha HPA Limited",
+ "report_date": "2 November 2026",
+ "report_date_iso": "2026-11-02",
+ "package_id": "2026-11-02_1047_1a199827da754919_a101",
+ "review_record_id": "1hpZZOVZJYzCfPcxAZVpZF09yf9jUqd8c",
+ "review_status": "RESEARCH-READY",
+ "marker_sha256": "42604b6b662c47b45566e39aa160b468ebcfae177f23e9dbdd400c99cee90dbb",
+ "handoff_created_at": "2026-11-02T14:06:05+11:00",
+ "pdf_sha256": "5d86444b5dd4ba872a76fd2b04f0c3507dd0312d8ca034c795b3bbec4fcca232",
+ "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-02-A4N/TAR_A4N_2Nov2026.pdf",
+ "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-02-A4N/TAR_A4N_2Nov2026_cover.png",
+ "title": "Alpha HPA: A$160M Debt Drawdown Process Starts",
+ "caption": "The Announcement Room | Alpha HPA Limited (A4N)\n\nAlpha HPA Limited said on 2 November 2026 that it has commenced the process of progressively drawing on an A$160M commitment from the Critical Minerals Facility, managed by Export Finance Australia (EFA). The company is targeting the drawdown to commence in the March quarter 2027.\n\nThe news was already flagged in the 30 October quarterly report, which showed cash of A$81.4m at 30 September 2026, down from A$161.1m a quarter earlier, and no borrowings drawn. Capex of A$69.6m was the largest cash outflow in the quarter.\n\nKey points:\n\n• A$160M commitment from the Critical Minerals Facility, managed by EFA\n• Disbursement is monthly, approved by EFA, and subject to amended documentation and customary utilisation notices\n• The company targets the drawdown to commence in the March quarter 2027\n• Cash fell 49.5% in the September quarter to A$81.4m\n• Capex was A$69.6m, about 86% of closing cash\n• The company's own estimate is 6.5 quarters of funding, based on operating outflow only\n• No borrowings were drawn at 30 September 2026\n\nLooking ahead, the company says funds will be disbursed monthly once drawdown begins. The things to watch are confirmation of the first disbursement, December quarter cash and capex, and whether Stage 2 plant is energised in early December as the company has targeted. These are company targets, not reported results.\n\nIn this two-page investor report, we look at:\n\n• What the release says and what it does not say\n• How the cash position changed in the September quarter\n• Why a loan commitment is not the same as cash\n• What to watch next\n\nASX: A4N | 2 November 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #A4N #AlphaHPA #HighPurityAlumina #CriticalMinerals #EquityResearch #AustralianStocks\n",
+ "claude_verification": {
+  "marker_hashes_match": true,
+  "review_research_ready": true,
+  "source_checks_passed": true,
+  "verify_clean_pdf_pass": true,
+  "visual_check_done": true,
+  "newer_asx_filings_none_material": true,
+  "buffer_duplicate_check_clear": true,
+  "master_switch_enabled": true
+ }
+}
