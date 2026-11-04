@@ -1,0 +1,28 @@
+{
+ "schema": 2,
+ "mode": "LIVE",
+ "ticker": "CCX",
+ "company_name": "City Chic Collective Limited",
+ "report_date": "4 November 2026",
+ "report_date_iso": "2026-11-04",
+ "package_id": "2026-11-04_1046_1a1a3cf0769323c8_a102",
+ "review_record_id": "1ZTmMdQDxJYI2snN3X2A-dhpLMPfNCyXy",
+ "review_status": "RESEARCH-READY",
+ "marker_sha256": "f3e8b24a7c40c88e42727a6258a51a2511c60dadaa39eb46fa7a31ece016c321",
+ "handoff_created_at": "2026-11-04T15:20:00+11:00",
+ "pdf_sha256": "2df214b611bbc24eb861eb22d4c9fce480df60471780b1a286061b6598a565cb",
+ "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-04-CCX/TAR_CCX_4Nov2026.pdf",
+ "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-04-CCX/TAR_CCX_4Nov2026_cover.png",
+ "title": "City Chic: Positive 1H EBIT Expected",
+ "caption": "The Announcement Room | City Chic Collective Limited (CCX)\n\nCity Chic Collective gave a preliminary, unaudited trading update on 4 November 2026 for the 18 weeks to 1 November 2026. Group revenue excluding wholesale fell 1.7%, but gross margin dollars rose 2.2% and group trading gross margin rose 240bps after the company cut promotional activity.\n\nThe company expects positive EBIT in the first half of FY27, subject to continuing sales momentum into Black Friday and Christmas. It did not give an EBIT figure or define EBIT. It also says it expects to end the half with positive cash and no drawn debt.\n\nKey points:\n\n• ANZ comparable store sales rose 15.4%, with full-price stores up 19.6%\n• ANZ online comparable sales fell 7.4%, while online trading gross margin rose 200bps\n• Group comparable sales rose 1.2% and comparable trading gross margin dollars rose 5.1%\n• USA comparable sales fell 12.0%, while comparable trading gross margin dollars rose 7.1%\n• Total sales including the closed wholesale business fell 6.1%\n• FY26 underlying EBITDA was $12.3m, up from $6.4m\n\nLooking ahead, the positive EBIT, cash and no drawn debt outcomes are management expectations, not results. The company will report its 1H FY27 results in February 2027.\n\nIn this two-page investor report, we look at:\n\n• What changed in the first 18 weeks of FY27\n• Why margin rose while revenue fell\n• What is reported and what is only expected\n• What to watch through Black Friday and Christmas\n\nASX: CCX | 4 November 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #CCX #CityChic #EquityResearch #AustralianStocks #Retail\n",
+ "claude_verification": {
+  "marker_hashes_match": true,
+  "review_research_ready": true,
+  "source_checks_passed": true,
+  "verify_clean_pdf_pass": true,
+  "visual_check_done": true,
+  "newer_asx_filings_none_material": true,
+  "buffer_duplicate_check_clear": true,
+  "master_switch_enabled": true
+ }
+}
