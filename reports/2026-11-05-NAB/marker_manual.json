@@ -1,0 +1,10 @@
+{
+  "manual": true,
+  "company_name": "National Australia Bank Limited",
+  "ticker": "NAB",
+  "pdf_sha256": "8f95bff94749b0a9fa78eb616f624bb3e161f3032775f0da564c25801633c290",
+  "cover_sha256": "5542a768d28ddda8e294019f198860a409e9783a13c388d5e5384d21de499da8",
+  "title": "NAB FY26: Credit Charge Up 85.7%, Cash Flat Ex LNI",
+  "caption_sha256": "350f22e6be3d3611d4f39ea1b19dae3323922ff945e29c792943da9d9fb22e30",
+  "note": "Manual marker for the owner-authorised one-time late path (6 Nov 2026). Package 2026-11-05_1048_1a1a8f67acd1c2c3_a102 (marker and three files hash-verified, review_2 RESEARCH-READY). 1:58 PM routine on 5 Nov stopped because the 2026 Annual Report (LUX copy) and the September 2026 Pillar 3 Report were unread; both read on 6 Nov via FinancialFilings (not in the Vitti email sources) and cross-checked: CET1 11.87% (17 bps up on a year earlier from 11.70%), credit impairment charge 1,547 vs 833, post balance date restructuring (about $300m, up to 2,500 roles) all consistent; no new material information. Two clarifications added: CET1 comparison labelled 'a year earlier'; sources line cites the Annual Report and Pillar 3. No publish.json by design; schema 3 stays disabled."
+}
