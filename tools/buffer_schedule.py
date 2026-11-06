@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """TAR Buffer scheduler (runs in GitHub Actions, stdlib only).
 
+REV 8 (6 Nov 2026, owner-authorised EARLY PUBLICATION from Monday 9 Nov 2026): the fixed 3:00 PM slot is gone. As soon as a
+verified publish.json exists and every check below passes (including the public Pages check), the post is created for
+"now + about 3 minutes" (Buffer needs a future dueAt) and goes out immediately. Cutoff for creating a post is now
+3:15 PM Sydney. ONE TAR report per ASX trading day: any other real TAR post dated today in Sydney (any ticker, any
+status except draft) blocks a different report. Every other safeguard (handoff schema, hashes, clean-PDF check, public URL
+check, caption and title rules, duplicate protection, idempotency, master switch, trading-day rules) is unchanged.
+
 REV 7 (26 Oct 2026 incident: GitHub's cron started the 2:17 and 2:24 PM runs at 2:44 and 2:59 PM, so the 2:30 PM cutoff
 refused a valid TUA handoff and the run still ended green). Fixes: (1) a push of reports/*/publish.json now starts this
 script immediately; (2) frequent crons (every 5 min, 1:00-2:55 PM) retry until the cutoff, now 2:45 PM; (3) after
@@ -8,11 +15,11 @@ scheduling, crons every 10 min until 6 PM reconcile Buffer; (4) every report kee
 with the states HANDOFF_COMMITTED -> BUFFER_SCHEDULED -> BUFFER_SENT -> LINKEDIN_CONFIRMED, or FAILED; (5) a final
 failure makes the run RED (GitHub emails the owner) instead of a silent green warning.
 
-Schedules ONE verified, current-day TAR report in Buffer for 3:00 PM Sydney through Buffer's official
+Publishes ONE verified, current-day TAR report through Buffer (as soon as ready, REV 8) through Buffer's official
 GraphQL API (https://api.buffer.com). It never researches, edits or rebuilds anything: it only
 re-verifies the committed payload and, if every check passes, makes exactly one createPost call.
 
-MODE (env): scheduled (GitHub schedule event only: 2:17 PM and 2:24 PM Sydney) | dryrun (all checks on a named
+MODE (env): scheduled (GitHub push of publish.json, plus the schedule retries) | dryrun (all checks on a named
             payload incl. Buffer reads, no createPost, time guards skipped) | verify (read-only: every file and
             public-URL check on a named payload, no Buffer call at all, time guards skipped) | selftest (secret +
             Buffer read-only connection test)
@@ -144,7 +151,7 @@ def buffer_connection_checks():
 def all_posts():
     posts, after = [], None
     while True:
-        d = gql("query($i:PostsInput!,$a:String){posts(first:100,after:$a,input:$i){edges{node{id status text dueAt}}"
+        d = gql("query($i:PostsInput!,$a:String){posts(first:100,after:$a,input:$i){edges{node{id status text dueAt sentAt}}"
                 " pageInfo{hasNextPage endCursor}}}", {"i": {"organizationId": ORG_ID}, "a": after})
         p = d["posts"]
         posts += [e["node"] for e in (p["edges"] or [])]
@@ -153,24 +160,41 @@ def all_posts():
         after = p["pageInfo"]["endCursor"]
 
 
-def find_conflicts(date_line, slot):
-    """Every real Buffer post (not DRY RUN/TEST ONLY drafts) that mentions this report or sits in the 3 PM slot."""
+def early_slot(n):
+    """dueAt for an early (as-soon-as-ready) post: now + 3 minutes, whole minute. Buffer requires a future dueAt."""
+    return (n + timedelta(minutes=3)).replace(second=0, microsecond=0)
+
+
+def post_is_tar_report_today(p, today):
+    """A real TAR report post (not a DRY RUN/TEST ONLY/draft) dated today in Sydney."""
+    t = p["text"] or ""
+    if t.startswith("DRY RUN DRAFT") or t.startswith("TEST ONLY") or not t.startswith("The Announcement Room |"):
+        return False
+    if p["status"] not in ("scheduled", "sending", "needs_approval", "sent"):
+        return False
+    when = p.get("sentAt") or p.get("dueAt")
+    if not when:
+        return False
+    return datetime.fromisoformat(when.replace("Z", "+00:00")).astimezone(SYD).date() == today
+
+
+def find_conflicts(date_line, today):
+    """Every real Buffer post that mentions this report, plus (ONE report per trading day) every other real TAR report post
+    dated today in Sydney, whatever its ticker. DRY RUN DRAFT / TEST ONLY drafts are ignored."""
     out = []
     for p in all_posts():
         t = p["text"] or ""
         if t.startswith("DRY RUN DRAFT") or t.startswith("TEST ONLY"):
             continue
-        due = datetime.fromisoformat(p["dueAt"].replace("Z", "+00:00")) if p["dueAt"] else None
-        in_slot = p["status"] in ("scheduled", "sending", "needs_approval") and due == slot
-        if date_line in t or in_slot:
+        if date_line in t or post_is_tar_report_today(p, today):
             out.append(p)
     return out
 
 
-def is_identical(p, cap, slot):
-    """The existing post is exactly the one we would create (same text, 3 PM slot, still live or already sent)."""
-    due = datetime.fromisoformat(p["dueAt"].replace("Z", "+00:00")) if p["dueAt"] else None
-    return (p["text"] == cap and due == slot and p["status"] in ("scheduled", "sending", "sent"))
+def is_identical(p, cap, slot=None):
+    """The existing post is exactly the one we would create (same text, still live or already sent). The due time is not
+    compared: an early post's time is 'now', so a retry minutes later must still recognise its own post."""
+    return (p["text"] == cap and p["status"] in ("scheduled", "sending", "sent"))
 
 
 def sha256(path):
@@ -246,7 +270,6 @@ def main():
 
     # ---- current-day production guard, trading-day rules, master switch
     today = now_syd().date()
-    slot = datetime(d.year, d.month, d.day, 15, 0, tzinfo=SYD)
     if MODE == "scheduled":
         if d != today:
             die(f"report date {d} is not today in Sydney ({today})")
@@ -254,11 +277,10 @@ def main():
             die("not a full ASX trading day")
         if not json.load(open("config/auto-publish.json")).get("enabled") is True:
             die("AUTO-PUBLISH OFF (config/auto-publish.json enabled is not true)")
-    cutoff = datetime(d.year, d.month, d.day, 14, 45, tzinfo=SYD)  # Buffer needs only seconds; slot 3:00 PM keeps 15 min margin
+    cutoff = datetime(d.year, d.month, d.day, 15, 15, tzinfo=SYD)  # REV 8: latest moment a post may be created (3:15 PM Sydney)
 
     def time_ok():
-        n = now_syd()
-        return MODE in ("dryrun", "verify") or (n < cutoff and slot - n >= timedelta(minutes=10))
+        return MODE in ("dryrun", "verify") or now_syd() < cutoff
     if MODE == "scheduled":
         CTX["folder"], CTX["past_cutoff"] = folder, not time_ok()
         st = load_status(folder)
@@ -269,10 +291,11 @@ def main():
             set_status(folder, "HANDOFF_COMMITTED", handoff_created_at=P.get("handoff_created_at"),
                        handoff_commit=os.environ.get("GITHUB_SHA"), pdf_sha256=P.get("pdf_sha256"))
         if st.get("state") in ("BUFFER_SCHEDULED", "BUFFER_SENT") and st.get("buffer_post_id"):
-            reconcile(folder, st, slot)
+            due = st.get("due_at")
+            reconcile(folder, st, datetime.fromisoformat(due) if due else now_syd() - timedelta(minutes=5))
             return
     if not time_ok():
-        die(f"past the 2:45 PM Sydney cutoff or slot too close (now {now_syd().isoformat()})")
+        die(f"past the 3:15 PM Sydney cutoff (now {now_syd().isoformat()})")
 
     # ---- payload hygiene (mirrors the routine's Step 2e)
     for k in ("claude_verification", "package_id", "review_record_id", "review_status", "pdf_sha256", "pdf_url",
@@ -345,7 +368,7 @@ def main():
         die(f"public PDF verification failed: {e}", transient=True)
     print(f"PUBLIC URL VERIFIED: {msg}")
     if MODE == "scheduled" and not time_ok():
-        die("2:45 PM cutoff reached during public verification")
+        die("3:15 PM cutoff reached during public verification")
     if MODE == "verify":
         print("VERIFY PASS: handoff payload, committed files and the public GitHub Pages files are all verified; "
               "no Buffer call was made, nothing created.")
@@ -354,8 +377,8 @@ def main():
 
     # ---- Buffer: connection, channel, idempotency (Buffer is read BEFORE every attempt)
     buffer_connection_checks()
-    conflicts = find_conflicts(date_line, slot)
-    same = [p for p in conflicts if is_identical(p, cap, slot)]
+    conflicts = find_conflicts(date_line, today)
+    same = [p for p in conflicts if is_identical(p, cap)]
     if MODE == "dryrun":
         if conflicts:
             print(f"DRYRUN PASS: every check passed; createPost NOT called. Duplicate protection WOULD BLOCK: "
@@ -368,15 +391,16 @@ def main():
     if same and len(conflicts) == len(same):
         print(f"ALREADY SCHEDULED (idempotent): Buffer post {same[0]['id']} status {same[0]['status']}. Nothing created.")
         if MODE == "scheduled":
-            set_status(folder, "BUFFER_SCHEDULED", buffer_post_id=same[0]["id"], due_at=slot.isoformat())
+            set_status(folder, "BUFFER_SCHEDULED", buffer_post_id=same[0]["id"], due_at=same[0].get("dueAt") or now_syd().isoformat())
         print(f"::notice title=ALREADY SCHEDULED::Buffer post {same[0]['id']} ({same[0]['status']}); no new post created")
         return
     if conflicts:
         die(f"duplicate/conflict: existing Buffer post(s) {[p['id'] for p in conflicts]} are not identical to this report")
     if not time_ok():
-        die("2:45 PM cutoff reached before createPost")
+        die("3:15 PM cutoff reached before createPost")
 
     # ---- the single createPost call; an uncertain outcome is never retried, Buffer is re-read first
+    slot = early_slot(now_syd())  # REV 8: publish as soon as every check has passed (now + about 3 minutes)
     inp = {"channelId": CHANNEL_ID, "schedulingType": "automatic", "mode": "customScheduled",
            "dueAt": slot.isoformat(), "saveToDraft": False, "text": cap,
            "assets": [{"document": {"url": pdf_url, "thumbnailUrl": png_url, "title": title}}]}
@@ -390,7 +414,7 @@ def main():
     except RuntimeError as e:
         time.sleep(5)  # outcome UNCERTAIN: look at Buffer, never resend
         try:
-            again = [p for p in find_conflicts(date_line, slot) if is_identical(p, cap, slot)]
+            again = [p for p in find_conflicts(date_line, today) if is_identical(p, cap)]
         except SystemExit:
             raise
         if len(again) == 1:
