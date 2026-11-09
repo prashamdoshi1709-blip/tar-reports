@@ -1,0 +1,10 @@
+{
+  "manual": true,
+  "company_name": "Dyno Nobel Limited",
+  "ticker": "DNL",
+  "pdf_sha256": "b47cb79975c176e5b01b587074153e464ab372cc1b33893f95234c6384573435",
+  "cover_sha256": "5ec9dc4c3988beda1f24c5cb1f0a6b33f46ae10bbc6e44b831cc01829201ed41",
+  "title": "DNL FY26: Explosives EBIT Up 12%, Net Debt 2.1x",
+  "caption_sha256": "7a4af71a65a789a29b5c7aad69e6fd13422d1669f43787e53110dddd6ccc4606",
+  "note": "Manual marker for the owner-authorised one-time publication (9 Nov 2026). Facts from primary documents: FY26 Results Announcement (via FinancialFilings), FY26 Results Presentation and Appendix 4E/FY26 Financial Report (via Dyno Nobel investor site). Vitti draft checked against them; corrections: FY27 guidance midpoint implies about +10% (below FY26 12%), operating cash flow halved (conversion 56.8% to 35.5%), dividend cut applies to FY26 final, QPM supply described as stable per 4E. Share-price move (-8.12%) excluded (unverified). Not read: other 18 history filings; ASX newer-filing check not possible from ASX direct. No publish.json by design."
+}
