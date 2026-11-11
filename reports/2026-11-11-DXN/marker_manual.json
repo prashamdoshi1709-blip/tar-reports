@@ -1,0 +1,10 @@
+{
+  "manual": true,
+  "company_name": "DXN Limited",
+  "ticker": "DXN",
+  "pdf_sha256": "e32e99130fea04bdfb992690419cd365c4c1111ea8183dcc627e1e4744d17cd8",
+  "cover_sha256": "7cf563ebd59abfbb817cb693d1622464651b210168d53ec8014cc3b5ebc3b8a1",
+  "title": "DXN: A$4.8m Cable Landing Station Contract Won",
+  "caption_sha256": "080db29352f8e375102d59dd42f98eeb395998dda4ecc2164df41735b535cdb4",
+  "note": "Manual marker for the owner-authorised one-time publication of the 11 Nov 2026 report, built after the 1:15 PM task found no research review (package 2026-11-11_1046_1a1c7dcbe22ae32e_a1). Facts from primary documents: A$4.8m Cable Landing Station Contract (ASX 11 Nov 2026), Quarterly Activities/Appendix 4C (30 Oct 2026), Response to ASX Aware Query incl. ASX letter (5 Nov 2026), FY26 results announcement (31 Aug 2026). Vitti Daily Mover checked: share move (+13.0%, $0.1470 at 10:25), turnover statistics and 'largest CLS since April' wording excluded as unverified/incorrect (A$4.8m is below the A$5.3m April contract). FinancialFilings credits exhausted so the newer-filing feed check was not possible; a third-party announcement list showed nothing after the 11 Nov 9:21AM contract release (not freshness-proven). Not read: April/July CLS announcements, 4E, Q1 presentation. No publish.json by design."
+}
