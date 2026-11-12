@@ -150,7 +150,7 @@ def unit_tests():
         # tampered / incomplete / unrecognised
         ("H1 filing_verification object missing", mutate(v3("NONE"), ["filing_verification"], delete=True), "MISSING_FIELD"),
         ("H2 unrecognised contract version", mutate(v3("NONE"), ["filing_verification", "contract"], "material-filings/9"), "UNRECOGNISED_CONTRACT"),
-        ("H3 unrecognised schema 4", mutate(v3("NONE"), ["schema"], 4), "UNRECOGNISED_SCHEMA"),
+        ("H3 unrecognised schema 5", mutate(v3("NONE"), ["schema"], 5), "UNRECOGNISED_SCHEMA"),
         ("H4 unrecognised schema 1", mutate(v3("NONE"), ["schema"], 1), "UNRECOGNISED_SCHEMA"),
         ("H5 unknown outcome", mutate(v3("NONE"), ["filing_verification", "outcome"], "ALL_GOOD"), "BAD_OUTCOME"),
         ("H6 announcement id malformed", v3("MATERIAL_ASSESSED", [material(dict(SGR_AGM_ADDR, announcement_id="ABC"))]), "BAD_ANNOUNCEMENT_ID"),
@@ -306,7 +306,7 @@ def integration_tests():
     for name, P, code_want in (
         ("L5 scheduler rejects unreconciled material filing", v3("MATERIAL_ASSESSED", [material(SGR_AGM_ADDR, reconciliation="UNRESOLVED")]), "UNRESOLVED"),
         ("L6 scheduler rejects legacy flag falsely true with material filing", mutate(copy.deepcopy(good), ["claude_verification", "newer_asx_filings_none_material"], True), "CONTRADICTION"),
-        ("L7 scheduler rejects schema 4", mutate(copy.deepcopy(good), ["schema"], 4), "schema"),
+        ("L7 scheduler rejects schema 5", mutate(copy.deepcopy(good), ["schema"], 5), "schema"),
         ("L8 scheduler rejects wrong review reference", v3("MATERIAL_ASSESSED", [material(SGR_AGM_ADDR, review_ref="X")]), "REVIEW_REF_MISMATCH"),
         ("L9 scheduler rejects stale feed", mutate(copy.deepcopy(good), ["filing_verification", "feed", "fresh"], False), "STALE_FEED"),
     ):

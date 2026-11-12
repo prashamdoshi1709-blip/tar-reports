@@ -263,8 +263,8 @@ def main():
         die("report folder is marked SHELVED; it is never scheduled")
     tk, iso, company = P["ticker"], P["report_date_iso"], P["company_name"]
     d = datetime.strptime(P["report_date"], "%d %B %Y").date()
-    if P.get("schema") not in (2, 3) or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
-        die("payload schema/mode/date/folder mismatch (schema 2 or 3 required)")
+    if P.get("schema") not in (2, 3, 4) or P.get("mode") != "LIVE" or d.isoformat() != iso or folder != f"reports/{iso}-{tk}":
+        die("payload schema/mode/date/folder mismatch (schema 2, 3 or 4 required)")
     if not re.fullmatch(r"[A-Z0-9]{2,5}", tk):
         die("bad ticker")
 
@@ -298,11 +298,13 @@ def main():
         die(f"past the 3:15 PM Sydney cutoff (now {now_syd().isoformat()})")
 
     # ---- payload hygiene (mirrors the routine's Step 2e)
-    for k in ("claude_verification", "package_id", "review_record_id", "review_status", "pdf_sha256", "pdf_url",
-              "cover_url", "title", "caption", "marker_sha256", "handoff_created_at"):
+    need = ["claude_verification", "package_id", "pdf_sha256", "pdf_url", "cover_url", "title", "caption", "handoff_created_at"]
+    if P["schema"] != 4:  # schema 4 (Vitti-source) has no independent research review
+        need += ["review_record_id", "review_status", "marker_sha256"]
+    for k in need:
         if k not in P:
             die(f"payload missing {k}")
-    if P["review_status"] != "RESEARCH-READY":
+    if P["schema"] != 4 and P["review_status"] != "RESEARCH-READY":
         die("handoff review_status is not RESEARCH-READY")
     # Material-filings contract (tools/filing_contract.py). Schema 2: unchanged, all eight flags true. Schema 3: structured
     # filing_verification record. GitHub validates structure, consistency and report-text evidence only; the reading,

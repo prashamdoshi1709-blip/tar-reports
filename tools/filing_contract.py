@@ -240,13 +240,40 @@ def validate_v3(P):
             "routine": [f["announcement_id"] for f in filings if f["class"] == "ROUTINE_ADMIN"]}
 
 
+V4_FLAGS = ["vitti_sender_verified", "vitti_pdf_readable", "company_date_match", "final_pdf_valid",
+            "visual_check_done", "no_duplicate", "master_switch_enabled"]
+
+
+def validate_v4(P):
+    """Schema 4 (vitti-source/1, 12 Nov 2026, owner instruction): the report is built from the Vitti Capital Daily Mover only.
+    No independent research review, FinancialFilings or newer-ASX check is required or implied. Structure only: GitHub still
+    verifies the committed and public PDF, hashes, caption, title and duplicates exactly as for schemas 2 and 3."""
+    cv = P.get("claude_verification")
+    if not isinstance(cv, dict) or not all(cv.get(k) is True for k in V4_FLAGS):
+        _bad("V4_FLAGS", "claude_verification flags are not all true: "
+             + ",".join(k for k in V4_FLAGS if not isinstance(cv, dict) or cv.get(k) is not True))
+    vs = P.get("vitti_source")
+    if not isinstance(vs, dict) or vs.get("basis") != "VITTI_DAILY_MOVER":
+        _bad("V4_SOURCE", "vitti_source.basis must be VITTI_DAILY_MOVER")
+    for k in ("email_message_id", "pdf_name", "pdf_sha256"):
+        if not isinstance(vs.get(k), str) or not vs[k].strip():
+            _bad("V4_SOURCE", f"vitti_source.{k} missing")
+    if not re.fullmatch(r"[0-9a-f]{64}", vs["pdf_sha256"]):
+        _bad("V4_SOURCE", "vitti_source.pdf_sha256 is not a sha256")
+    if vs.get("independently_verified") is not False:
+        _bad("V4_SOURCE", "vitti_source.independently_verified must be false (TAR does not claim independent verification)")
+    return {"schema": 4, "outcome": "VITTI_SOURCE", "material": []}
+
+
 def validate(P):
     s = P.get("schema")
+    if s == 4:
+        return validate_v4(P)
     if s == 2:
         return validate_legacy(P)
     if s == SCHEMA:
         return validate_v3(P)
-    _bad("UNRECOGNISED_SCHEMA", f"schema {s!r} is not recognised (2 or 3 only)")
+    _bad("UNRECOGNISED_SCHEMA", f"schema {s!r} is not recognised (2, 3 or 4 only)")
 
 
 def _norm(t):
