@@ -35,6 +35,7 @@ Reused unchanged: the Apps Script import and its Drive packages, `tools/filing_c
 | Every figure in report and caption appears in the Vitti material (Daily Mover or the company announcement Vitti attached); no rounding, conversions or own calculations | `tar_gen/checks.py` |
 | No other ASX code; no "draft"/"approved"; no em dashes; no clock times; no advice wording; Vitti attribution in the caption | `tar_gen/checks.py` |
 | Two pages, 810 x 1012.5 pt, nothing runs into the sources/footer, no half-empty page | `tar_gen/render.py` |
+| Spelling (hunspell en_AU/en_US: likely typos), repeated words, punctuation, brackets, sentence starts | `tar_gen/checks.py`, `tar_gen/spell.py` |
 | Clean PDF (title, fonts, forbidden wording in text, metadata, raw bytes) | `tools/verify_clean_pdf.py` |
 | No report already exists for the day; this email / Daily Mover not used before | `tar_gen/run.py` |
 | The existing publisher accepts the handoff (schema 4, caption, title, files, hashes, PDF, cover) | `tar_gen/handoff.py` |
@@ -78,13 +79,31 @@ scheduled run until 2:30 PM; no package by 1:00 PM, or any final failure, opens 
 generator does not retry that date. Each outcome is also logged on the issue "TAR generator: daily log". Issues contain
 reason codes only, never report content (the repository is public).
 
+## Publishing gate in the existing publisher
+
+`tools/buffer_schedule.py` recognises an automated handoff (it carries `generator.name = "tar_gen"`, or the Drive
+package reference only the generator writes) and, in scheduled and dryrun modes, refuses it unless
+`vitti_generator.enabled`, `.publish` and `.rights_confirmed` are all true, in addition to every existing check.
+Manual and legacy handoffs (schemas 2, 3 and hand-made schema 4) are unaffected. Verify mode stays open because the
+generator's shadow contract check uses it. `tar_gen/run.py` applies the same rule before it commits anything.
+
+## Confidentiality (public repository)
+
+- Shadow runs never commit, never upload artifacts or caches, and delete their output; report files never leave the
+  runner. Nothing is committed to GitHub until publication is switched on and every check has passed.
+- Logs, step summaries and issues carry dates, reason codes and hashes only: no company, ticker, figures or text
+  before publication. Detailed check problems are logged only outside GitHub Actions. An unexpected error in a public
+  run is reported by its type only (no traceback).
+- Drive access is read-only (`drive.readonly`). Gemini is off and refuses to run without written authorisation.
+- The optional Apps Script dispatcher sends no package details to GitHub.
+- Residual risk: anyone with write access to the repository can change the workflows; keep collaborators to the owner.
+
 ## Secrets (repository Settings > Secrets and variables > Actions)
 
 | Secret | Needed for |
 |---|---|
 | `GEMINI_API_KEY` | optional, MODE A only: a free Google AI Studio key (no billing account) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | reading the Drive packages (service account with Viewer on "TAR Daily Sources") |
-| `TAR_REVIEW_PASSWORD` | optional: encrypted review copy of shadow reports in the run artifacts (7z, AES) |
 | `BUFFER_API_KEY` | existing, unchanged |
 
 ## Tests
@@ -98,7 +117,15 @@ generated) and `shadow`. In GitHub Actions the logs, step summary and issues car
 ## Go-live checklist
 
 1. `GOOGLE_SERVICE_ACCOUNT_JSON` secret added; manual run `check-connections` passes. (MODE B needs nothing else.)
-2. `enabled=true`, `publish=false`: shadow reports for a few trading days; review the encrypted copies.
+2. `enabled=true`, `publish=false`: shadow reports for a few trading days (each day's outcome is logged on the
+   "TAR generator: daily log" issue; no report copies are kept on GitHub).
 3. Owner confirms in writing the right to republish Vitti Capital Daily Mover material publicly; set `rights_confirmed=true`.
 4. Set `publish=true`. Disable the Claude scheduled routines that produced reports (1:15 PM / 1:58 PM / 3 PM) so they do
    not compete; the one-report-per-day rule would block a second report anyway.
+
+## Pre-merge real-data test
+
+The "TAR Tests" workflow's `drive-shadow` job runs on pull requests once `GOOGLE_SERVICE_ACCOUNT_JSON` exists: it checks
+the Drive connection, then builds the newest real Vitti package (last 10 days) in MODE B through every check and the
+real publisher in verify mode, logs codes and hashes only, and deletes the output. Until the secret exists it skips.
+

@@ -75,13 +75,31 @@ def key(s):
     return re.sub(r"[^A-Z]", "", s.upper())
 
 
+MONTHS3 = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "january", "february", "march",
+           "april", "june", "july", "august", "september", "october", "november", "december", "monday", "tuesday",
+           "wednesday", "thursday", "friday", "australia", "australian", "english"}
+
+
 def sentence_case(s):
+    """Vitti's labels are upper case. Ordinary dictionary words become lower case, acronyms (CLS, HPC, MPI, EBITDA,
+    FY26) stay upper case, month abbreviations become Sep/Oct. Mixed-case text is returned as written."""
+    from .spell import known, FALLBACK_COMMON
     s = s.strip()
-    if s.isupper():
-        s = s.lower()
-        s = re.sub(r"\b(asx|ebitda|ebit|npat|fy\d\d|h[12]|q[1-4]|accc|firb|hsr|cfius|mpi|adj|cps|eps|nta|ceo|cfo)\b",
-                   lambda m: m.group(0).upper(), s)
-    return s[:1].upper() + s[1:]
+    if not s.isupper():
+        return s[:1].upper() + s[1:]
+
+    def fix(m):
+        w = m.group(0)
+        lw = w.lower()
+        if any(ch.isdigit() for ch in w):
+            return w
+        if lw in MONTHS3:
+            return w.title()
+        if len(w) <= 3:
+            return lw if lw in FALLBACK_COMMON else w  # AI, HPC, CLS stay; of, in, to, new, net go lower case
+        return lw if (len(w) > 5 or known(lw)) and lw not in ("ebitda", "npat", "cfius", "accc", "firb") else w
+    out = re.sub(r"[A-Za-z][A-Za-z']*", fix, s)
+    return out[:1].upper() + out[1:]
 
 
 def _find(rs, k):

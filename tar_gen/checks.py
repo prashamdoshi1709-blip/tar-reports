@@ -11,13 +11,18 @@ writer gets them back as feedback and must fix them, and a report with any remai
 """
 import re
 
-from .common import BAD, long_date
+from .common import BAD, GenError, long_date
+from .spell import SpellUnavailable, typos
 from .vitti import NUM_RE
 
 ADVICE = re.compile(r"\b(we recommend|you should (buy|sell|hold)|(strong )?buy rating|sell rating|investors should (buy|sell)|"
                     r"guaranteed? (return|profit)s?|risk[- ]free)\b", re.I)
 CLOCK = re.compile(r"\b\d{1,2}:\d{2}\b")
 ASX_CODE = re.compile(r"\bASX\s*:\s*([A-Z0-9]{2,5})\b")
+DOUBLED = re.compile(r"\b([A-Za-z]{2,})\s+\1\b", re.I)
+SPACE_PUNCT = re.compile(r"\s[,;:!?]|\s\.(?!\d)")
+REPEAT_PUNCT = re.compile(r"[,;:]{2}|(?<!\.)\.\.(?!\.)|[!?]{2}|,\.|\.,")
+LOWER_START = re.compile(r"[a-z]{3}[.!?]\s+[a-z]")
 UNIT_AFTER = re.compile(r"^\s?(%|m\b|bn\b|b\b|k\b|x\b|c\b|cps\b|per ?cent|million|billion|thousand|times|cents)", re.I)
 
 LIMITS = {"headline": (30, 120), "title": (12, 54), "topic": (4, 52), "lede": (80, 430), "facts_label": (4, 50),
@@ -131,6 +136,20 @@ def check_report(rep, ident):
             p.append(f"{field}: no clock times; say 'in morning trade' for the intraday move")
         if ADVICE.search(text):
             p.append(f"{field}: reads as personal financial advice; describe, do not recommend")
+        if DOUBLED.search(text):
+            p.append(f"{field}: repeated word '{DOUBLED.search(text).group(0)}'")
+        if SPACE_PUNCT.search(text) or REPEAT_PUNCT.search(text):
+            p.append(f"{field}: punctuation error")
+        if text.count("(") != text.count(")"):
+            p.append(f"{field}: unbalanced brackets")
+        if LOWER_START.search(text):
+            p.append(f"{field}: a sentence starts with a lower-case letter")
+        try:
+            bad_words = typos(text)
+        except SpellUnavailable:
+            raise GenError("SPELLCHECK_UNAVAILABLE", "hunspell is not installed; spelling cannot be checked")
+        if bad_words:
+            p.append(f"{field}: likely misspelling(s): {', '.join(bad_words)}")
         for code in ASX_CODE.findall(text):
             if code != ident.ticker:
                 p.append(f"{field}: mentions ASX code {code}; only {ident.ticker} may appear")

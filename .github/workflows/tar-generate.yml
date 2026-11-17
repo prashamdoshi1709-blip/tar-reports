@@ -63,8 +63,9 @@ jobs:
         if: steps.gate.outputs.go == 'true'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 p7zip-full
+          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 hunspell hunspell-en-au hunspell-en-us
           python3 -m pip install -q -r tar_gen/requirements.txt
+      # No artifacts are uploaded: this repository is public, so report files never leave the runner.
       - name: Offline test suite
         if: steps.gate.outputs.go == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'offline-tests'
         run: python3 tools/test_tar_gen.py
@@ -81,19 +82,3 @@ jobs:
             shadow) python3 -m tar_gen.run --mode shadow --ignore-schedule ;;
             *) python3 -m tar_gen.run ;;
           esac
-      - name: Encrypted review copy (shadow mode)
-        if: always() && steps.gate.outputs.go == 'true' && hashFiles('generator-output/**') != ''
-        env:
-          PW: ${{ secrets.TAR_REVIEW_PASSWORD }}
-        run: |
-          # The repository is public, so artifacts are too: the review copy is only kept if it can be encrypted.
-          if [ -z "$PW" ]; then echo "TAR_REVIEW_PASSWORD not set: no review copy kept"; rm -rf generator-output; exit 0; fi
-          7z a -bso0 -p"$PW" -mhe=on tar-review.7z generator-output
-          rm -rf generator-output
-      - name: Upload encrypted review copy
-        if: always() && hashFiles('tar-review.7z') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: tar-review-${{ github.run_id }}
-          path: tar-review.7z
-          retention-days: 7

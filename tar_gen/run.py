@@ -27,7 +27,7 @@ Exit codes: 0 = done, nothing to do, or a transient problem that the next schedu
 (an issue is opened, the run turns red and GitHub emails the owner).
 """
 import argparse, glob, json, os, shutil, subprocess, sys
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 
 from .common import CONFIG_PATH, GenError, ROOT, SYD, folder_rel, is_trading_day, load_config, parse_iso_date, today_syd
 from . import notify
@@ -95,6 +95,8 @@ def publish_allowed(cfg, g):
     why = []
     if cfg.get("enabled") is not True:
         why.append("master switch enabled=false")
+    if g.get("enabled") is not True:
+        why.append("vitti_generator.enabled=false")
     if g.get("publish") is not True:
         why.append("vitti_generator.publish=false")
     if g.get("rights_confirmed") is not True:
@@ -188,11 +190,24 @@ def main(argv=None):
     ap.add_argument("--fixture-writer"); ap.add_argument("--mode", choices=["auto", "shadow"], default="auto")
     ap.add_argument("--check-connections", action="store_true"); ap.add_argument("--ignore-schedule", action="store_true")
     ap.add_argument("--no-notify", action="store_true"); ap.add_argument("--config", default=CONFIG_PATH)
+    ap.add_argument("--latest", type=int, metavar="DAYS",
+                    help="private test: use the newest package from the last DAYS days (never publishes)")
     a = ap.parse_args(argv)
     cfg, g = load_config(a.config)
     if a.check_connections:
         check_connections(g)
         return 0
+    if a.latest:
+        src0 = make_source(g, a.local)
+        for k in range(a.latest):
+            dd = today_syd() - timedelta(days=k)
+            if src0.packages_for(dd):
+                a.date, a.mode, a.ignore_schedule = dd.isoformat(), "shadow", True
+                log(f"LATEST PACKAGE: {dd} (private shadow test; never published)")
+                break
+        else:
+            log(f"NO PACKAGE in the last {a.latest} days")
+            return 1
     notify_on = not a.no_notify and os.environ.get("GITHUB_ACTIONS") == "true"
     d = parse_iso_date(a.date) if a.date else today_syd()
     now = datetime.now(SYD)
@@ -264,7 +279,7 @@ def main(argv=None):
                     + f"\n- PDF sha256 `{P['pdf_sha256']}`\n- attempts {res['attempts']}\n- not published: {reason}")
             if notify_on:
                 notify.notify_log(f"{d.isoformat()}: shadow report built and verified with {wmode} (not published: {reason}). "
-                                  f"Encrypted review copy in the run artifacts if TAR_REVIEW_PASSWORD is set. {run_url()}")
+                                  f"No copy is kept on GitHub. {run_url()}")
             return 0
         sha = commit_and_push([res["pdf"], res["png"], os.path.join(out_dir, "publish.json")], rel,
                               f"TAR {ident.ticker} {d.day} {d.strftime('%b %Y')}: automated report from the Vitti Daily Mover (schema 4 handoff)")
@@ -287,5 +302,24 @@ def main(argv=None):
         return 1
 
 
+def safe_main(argv=None):
+    """In public GitHub runs an unexpected error is reported by type only: a traceback can quote report content."""
+    try:
+        return main(argv)
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        if not PUBLIC:
+            raise
+        log(f"::error title=NO REPORT::UNEXPECTED_ERROR: {type(e).__name__} (details withheld from the public log)")
+        summary(f"### NO REPORT\n- UNEXPECTED_ERROR: {type(e).__name__}")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            try:
+                notify.notify_failure(today_syd(), "UNEXPECTED_ERROR", type(e).__name__, run_url())
+            except Exception:  # noqa: BLE001
+                pass
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(safe_main())

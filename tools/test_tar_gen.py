@@ -8,8 +8,8 @@ format (same PDF metadata and letter-spaced labels), so no Vitti content is stor
     python3 tools/test_tar_gen.py --historical DIR        # also replay real packages kept OUTSIDE the repo:
         DIR/<name>/daily_mover.pdf [+ SOURCE_INDEX.json] [+ reply.json = an AI reply to run the full pipeline]
 """
-import copy, glob, hashlib, json, os, shutil, subprocess, sys, tempfile
-from datetime import date
+import contextlib, copy, glob, hashlib, io, json, os, shutil, subprocess, sys, tempfile
+from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -203,6 +203,51 @@ class MockGemini:
         self.srv.shutdown()
 
 
+class MockDrive:
+    """Local stand-in for the Drive v3 REST API serving one synthetic package folder."""
+    def __init__(self, pkg_root, d):
+        import http.server, threading, urllib.parse
+        outer = self
+        pdir = glob.glob(os.path.join(pkg_root, "*"))[0]
+        idx = json.load(open(os.path.join(pdir, "SOURCE_INDEX.json")))
+        idx["daily_mover"]["drive_file_id"] = "DM"
+        self.files = {"PKG": {"id": "PKG", "name": os.path.basename(pdir), "parent": "ROOT", "mimeType": "application/vnd.google-apps.folder"},
+                      "IDX": {"id": "IDX", "name": "SOURCE_INDEX.json", "parent": "PKG", "body": json.dumps(idx).encode()},
+                      "DM": {"id": "DM", "name": "dm.pdf", "parent": "PKG", "body": open(os.path.join(pdir, "daily_mover.pdf"), "rb").read()}}
+        self.methods, self.forbid = set(), False
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                outer.methods.add("GET")
+                if outer.forbid:
+                    self.send_response(403); self.end_headers(); return
+                u = urllib.parse.urlparse(self.path); qs = urllib.parse.parse_qs(u.query)
+                fid = u.path.rsplit("/", 1)[-1]
+                if fid in outer.files and qs.get("alt") == ["media"]:
+                    b = outer.files[fid]["body"]
+                elif fid == "files":
+                    q = qs.get("q", [""])[0]
+                    par = q.split("'")[1]
+                    hits = [f for f in outer.files.values() if f["parent"] == par
+                            and ("name='SOURCE_INDEX.json'" not in q or f["name"] == "SOURCE_INDEX.json")]
+                    b = json.dumps({"files": [{k: v for k, v in f.items() if k != "body"} for f in hits]}).encode()
+                else:
+                    self.send_response(404); self.end_headers(); return
+                self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+            def do_POST(self):
+                outer.methods.add("POST"); self.send_response(405); self.end_headers()
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.srv.shutdown()
+
+
 def main():
     hist = sys.argv[sys.argv.index("--historical") + 1] if "--historical" in sys.argv else None
     tmp = tempfile.mkdtemp(prefix="tar_gen_test_")
@@ -288,6 +333,7 @@ def main():
                and cap.rstrip().split()[-1].startswith("#"))
         flags = dict(ident.checks, final_pdf_valid=True, visual_check_done=True, no_duplicate=True, master_switch_enabled=True)
         P = make_handoff(ident, res, pkg, flags, "fixture")
+        main_files = {"pdf": res["pdf"], "png": res["png"]}  # later sections reuse `res` for other reports
         record("schema 4 handoff passes filing_contract.validate_v4", FC.validate(P)["schema"] == 4)
         record("handoff never claims independent verification", P["vitti_source"]["independently_verified"] is False)
         out_txt = contract_check(P, res["pdf"], res["png"])
@@ -429,9 +475,11 @@ def main():
             seen = pr.stdout + pr.stderr + (open(summ).read() if os.path.exists(summ) else "")
             leaks = [b for b in secret_bits if b in seen]
             record(f"public log + step summary of a {label}: no ticker, company, figures or report text", not leaks and pr.stdout.strip(), f"leaked {leaks}")
-        wf = open(os.path.join(ROOT, ".github", "workflows", "tar-generate.yml")).read()
-        record("review copies are only kept encrypted (7z AES, encrypted file names), else deleted",
-               "-mhe=on" in wf and 'rm -rf generator-output' in wf and "TAR_REVIEW_PASSWORD" in wf)
+        wfs = "".join(open(f).read() for f in glob.glob(os.path.join(ROOT, ".github", "workflows", "*.yml")))
+        record("no workflow uploads artifacts or caches (report files never leave the runner)",
+               "upload-artifact" not in wfs and "actions/cache" not in wfs and "TAR_REVIEW_PASSWORD" not in wfs)
+        record("the real-data CI shadow job deletes its output and runs without notifications",
+               'rm -rf "$RUNNER_TEMP/tar-shadow"' in wfs and "--no-notify" in wfs)
         runsrc = open(os.path.join(ROOT, "tar_gen", "run.py")).read()
         record("failure issue body uses only the reason code and a fixed description",
                'notify.notify_failure(d, e.code, REASONS.get(e.code, "see the reason code"), run_url())' in runsrc
@@ -448,6 +496,122 @@ def main():
             record("a second report for a day that already has one is refused", bool(RUN.existing_report(D)))
         finally:
             RUN.ROOT = saved_root
+
+        print("== 11. publishing gates: the EXISTING publisher refuses automated handoffs unless every generator switch is on")
+        def sandbox_run(Pv, cfg_over, mode):
+            t = tempfile.mkdtemp(dir=tmp)
+            shutil.copytree(os.path.join(ROOT, "tools"), os.path.join(t, "tools"), ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(os.path.join(ROOT, "config"), os.path.join(t, "config"))
+            c = json.load(open(os.path.join(t, "config", "auto-publish.json")))
+            c["enabled"] = True
+            c["vitti_generator"].update(cfg_over)
+            json.dump(c, open(os.path.join(t, "config", "auto-publish.json"), "w"))
+            rel = "reports/2026-11-18-TMZ"
+            os.makedirs(os.path.join(t, rel))
+            shutil.copy(main_files["pdf"], os.path.join(t, rel)); shutil.copy(main_files["png"], os.path.join(t, rel))
+            json.dump(Pv, open(os.path.join(t, rel, "publish.json"), "w"))
+            state = {"creates": 0}
+
+            def gql(q, v=None, soft=False):
+                if "createPost" in q:
+                    state["creates"] += 1; i = v["i"]
+                    state["node"] = {"id": "MOCK1", "status": "scheduled", "text": i["text"], "dueAt": i["dueAt"], "channelId": i["channelId"],
+                                     "assets": [{"source": i["assets"][0]["document"]["url"], "thumbnail": i["assets"][0]["document"]["thumbnailUrl"],
+                                                 "document": {"title": i["assets"][0]["document"]["title"]}}]}
+                    return {"createPost": {"__typename": "PostActionSuccess", "post": {"id": "MOCK1"}}}
+                if "account{" in q:
+                    return {"account": {"id": "a", "organizations": [{"id": BS.ORG_ID, "name": "o"}]}}
+                if "channels(" in q:
+                    return {"channels": [{"id": BS.CHANNEL_ID, "displayName": BS.CHANNEL_NAME, "service": "linkedin", "isDisconnected": False, "isLocked": False}]}
+                if "posts(" in q:
+                    return {"posts": {"edges": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}}
+                if "post(input" in q:
+                    return {"post": state["node"]}
+                raise AssertionError(q[:50])
+            saved = (BS.MODE, BS.gql, BS.now_syd, BS.verify_public, os.getcwd(), dict(BS.CTX))
+            env_saved = {k: os.environ.get(k) for k in ("PAYLOAD", "GITHUB_EVENT_NAME", "GITHUB_REF", "BUFFER_API_KEY")}
+            BS.MODE, BS.gql = mode, gql
+            BS.now_syd = lambda: datetime(2026, 11, 18, 12, 0, tzinfo=BS.SYD)
+            BS.verify_public = lambda *a, **k: "stubbed public check"
+            os.environ.update(PAYLOAD=f"{rel}/publish.json", GITHUB_EVENT_NAME="workflow_run", GITHUB_REF="refs/heads/main", BUFFER_API_KEY="mock")
+            BS.CTX.clear(); BS.CTX["folder"] = None
+            os.chdir(t)
+            buf, code = io.StringIO(), None
+            try:
+                with contextlib.redirect_stdout(buf):
+                    try:
+                        BS.main()
+                    except SystemExit as e:
+                        code = e.code
+            finally:
+                os.chdir(saved[4])
+                BS.MODE, BS.gql, BS.now_syd, BS.verify_public = saved[:4]
+                BS.CTX.clear(); BS.CTX.update(saved[5])
+                for k, v in env_saved.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+            return code, buf.getvalue(), state["creates"]
+
+        auto = copy.deepcopy(P)
+        off = {"enabled": False, "publish": False, "rights_confirmed": False}
+        code, out, n = sandbox_run(auto, off, "scheduled")
+        record("automated handoff, generator switches off: refused, no Buffer post (started by workflow_run)", n == 0 and "TAR_GEN_GATE" in out, out[-160:])
+        code, out, n = sandbox_run(auto, {"enabled": True, "publish": True, "rights_confirmed": False}, "scheduled")
+        record("automated handoff, rights not confirmed: refused", n == 0 and "rights_confirmed" in out)
+        code, out, n = sandbox_run(auto, {"enabled": False, "publish": True, "rights_confirmed": True}, "scheduled")
+        record("automated handoff, generator disabled: refused", n == 0 and "TAR_GEN_GATE" in out and "enabled" in out)
+        code, out, n = sandbox_run(auto, {"enabled": True, "publish": True, "rights_confirmed": True}, "scheduled")
+        record("automated handoff, every switch on: exactly one (mocked) Buffer post", n == 1 and "SCHEDULED: Buffer post MOCK1" in out, out[-200:])
+        disguised = copy.deepcopy(auto); disguised.pop("generator")
+        code, out, n = sandbox_run(disguised, off, "scheduled")
+        record("automated handoff with its generator field removed is still recognised and refused", n == 0 and "TAR_GEN_GATE" in out)
+        manual = copy.deepcopy(auto); manual.pop("generator"); manual["vitti_source"].pop("drive_package_folder_id")
+        code, out, n = sandbox_run(manual, off, "scheduled")
+        record("manual / legacy schema 4 handoff unaffected by the generator switches", n == 1 and "TAR_GEN_GATE" not in out, out[-200:])
+        code, out, n = sandbox_run(auto, off, "dryrun")
+        record("dryrun reports the gate for an automated handoff", n == 0 and "TAR_GEN_GATE" in out)
+        code, out, n = sandbox_run(auto, off, "verify")
+        record("verify mode (the generator's shadow contract check) stays available with switches off", "VERIFY PASS" in out and n == 0)
+        os.environ.update(GITHUB_ACTIONS="true", GITHUB_REF="refs/heads/main")
+        ok, why = RUN.publish_allowed(dict(cfg, enabled=True), dict(g, enabled=False, publish=True, rights_confirmed=True))
+        record("generator publish gate also requires vitti_generator.enabled", not ok and any("vitti_generator.enabled" in w for w in why))
+        for k in ("GITHUB_ACTIONS", "GITHUB_REF"):
+            os.environ.pop(k, None)
+
+        print("== 12. Drive reader against a mock Drive API (no Google account needed)")
+        from tar_gen.source import DriveSource
+        mdrive = MockDrive(root, D)
+        import requests
+        ds = object.__new__(DriveSource)
+        ds.http, ds.root, ds.workdir, ds.API = requests.Session(), "ROOT", tempfile.mkdtemp(dir=tmp), mdrive.url + "/drive/v3/files"
+        pk = ds.packages_for(D)
+        record("Drive: finds the day's package, downloads SOURCE_INDEX and the Daily Mover", len(pk) == 1 and os.path.isfile(pk[0].daily_mover_path))
+        record("Drive: package passes the same identity checks as a local one", verify_package(pk[0], D, GEN).ticker == "TMZ")
+        record("Drive: only GET requests are made (read-only)", mdrive.methods == {"GET"})
+        mdrive.forbid = True
+        expect_gen_error("Drive: missing folder share (403) is reported clearly", lambda: ds.packages_for(D), "DRIVE_FORBIDDEN")
+        mdrive.stop()
+
+        print("== 13. spelling and grammar checks")
+        record("a likely typo stops the report", "misspelling" in probs(lambda r: r["facts"][1].update(body="The price is fixed for the frist two years of the agreement.")))
+        record("a repeated word stops the report", "repeated word" in probs(lambda r: r["facts"][1].update(body="The price is fixed for the the first two years.")))
+        record("broken punctuation stops the report", "punctuation" in probs(lambda r: r.update(take=r["take"].replace(".", " .", 1))))
+        record("unbalanced brackets stop the report", "brackets" in probs(lambda r: r["facts"][1].update(body="The price is fixed (for the first two years.")))
+        record("finance jargon and names are not flagged", checks.check_report(checks.sanitize(GOOD), ident) == [])
+        from tar_gen.dailymover import sentence_case
+        record("Vitti's upper-case labels keep their acronyms", sentence_case("AI HPC CANCELLATION RECOVERY") == "AI HPC cancellation recovery"
+               and sentence_case("TOTAL BACKLOG (30 SEP 26)") == "Total backlog (30 Sep 26)")
+
+        print("== 14. unexpected errors never print details in a public run")
+        envc = dict(os.environ, GITHUB_ACTIONS="true", GITHUB_REF="refs/heads/claude/test")
+        envc.pop("GITHUB_TOKEN", None)
+        pr = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, '.'); from tar_gen import run as R; "
+                             "R.main = lambda a=None: (_ for _ in ()).throw(ValueError('SECRET Test Minerals 85.0')); sys.exit(R.safe_main([]))"],
+                            cwd=ROOT, env=envc, capture_output=True, text=True)
+        record("crash in a public run: type only, no traceback or message", pr.returncode == 1 and "UNEXPECTED_ERROR: ValueError" in pr.stdout
+               and "SECRET" not in pr.stdout + pr.stderr and "Traceback" not in pr.stderr)
 
         if hist:
             print(f"== 10. historical Vitti packages from {hist} (kept outside the repository)")

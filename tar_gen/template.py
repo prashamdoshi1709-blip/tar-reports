@@ -33,8 +33,21 @@ def short_name(company):
 
 
 def lower_first(s):
+    """Lower-case the first letter only when the first word is an ordinary dictionary word (never a name or acronym)."""
+    from .spell import known
     s = s.strip()
-    return s[:1].lower() + s[1:] if len(s) > 1 and s[1:2].islower() else s
+    first = re.match(r"[A-Za-z]+", s)
+    if not first or len(s) < 2 or not s[1:2].islower():
+        return s
+    nxt = re.match(r"[A-Za-z]+\s+([A-Za-z])", s)
+    if nxt and nxt.group(1).isupper():  # "Superior Proposal", "Women's Health": a multi-word name stays as written
+        return s
+    return s[:1].lower() + s[1:] if known(first.group(0).lower()) else s
+
+
+def and_list(items):
+    items = [i for i in items if i]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
 def full_stop(s):
@@ -106,26 +119,26 @@ def compose(ident, dm, level=1, drop=frozenset()):
 
     rep = {
         "title": title, "headline": head,
-        "topic": sentence_case(dm["kpis"][1]["label"])[:52] if len(dm["kpis"]) > 1 else "Share price move",
+        "topic": "Share price move",
         "lede": (f"{ident.company} shares {verb} {pct} in morning trade{at_price}, according to the Vitti Capital Daily Mover. "
                  f"The first possible driver Vitti lists is: {lower_first(full_stop(dm['drivers'][0]))}"),
         "kpis": kpis, "chart": chart,
         "facts_label": "What changes now, according to Vitti", "facts": keep("facts", changes),
         "context_label": "How we got here", "context": keep("context", timeline),
         "why": keep("why", drivers), "watch": keep("watch", risks),
-        "take_label": "Vitti view", "take": view,
+        "take_label": "Vitti view", "take": view, "uses_support": False,
         "sources_note": full_stop(dm["source"]) if dm.get("source") else "",
         "caption": {
             "intro": f"According to the Vitti Capital Daily Mover dated {d}, {ident.company} shares {verb} {pct} in morning trade{at_price}.",
-            "context": "Vitti points to these possible drivers: " + "; ".join(lower_first(t.rstrip('.')) for t in dm["drivers"][:3]) + ".",
-            "key_points": [f"{k['label']}: {k['value']}" for k in kpis[1:]] + [x["body"] for x in changes[:2]],
-            "looking_ahead": "Looking ahead, Vitti flags these key risks: " + "; ".join(lower_first(r["head"]) for r in dm["risks"][:3]) + ".",
+            "context": "Vitti points to three possible drivers of the move:\n" + "\n".join("• " + t.strip().rstrip(".") for t in dm["drivers"][:3]),
+            "key_points": [f"{k['label']}: {k['value']}" for k in kpis[1:]] + [x["body"].rstrip(".") for x in changes[:2]],
+            "looking_ahead": "Looking ahead, Vitti flags three key risks: " + and_list([lower_first(r["head"]) for r in dm["risks"][:3]]) + ".",
             "we_look_at": ["What may have driven the move", "What changes now", "How we got here", "Key risks and the Vitti view"],
             "hashtags": [re.sub(r"[^A-Za-z0-9]", "", short)],
         },
     }
     if len(rep["caption"]["context"]) > 480:
-        rep["caption"]["context"] = "Vitti points to this possible driver: " + lower_first(full_stop(dm["drivers"][0]))
+        rep["caption"]["context"] = "The first possible driver Vitti lists: " + lower_first(full_stop(dm["drivers"][0]))
     rep["caption"]["key_points"] = [p for p in rep["caption"]["key_points"] if len(p) <= 170][:6]
     return rep
 

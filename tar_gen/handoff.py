@@ -34,7 +34,10 @@ def make_handoff(ident, result, pkg, flags, model, run_id=None, writer_mode=None
                       "fallback_reason": fallback, "attempts": result["attempts"],
                       "run_id": run_id, "cover_sha256": sha256_file(result["png"])},
     }
-    FC.validate_v4(P)  # same validator the publisher uses; raises ContractError
+    try:
+        FC.validate_v4(P)  # same validator the publisher uses
+    except FC.ContractError as e:
+        raise GenError("HANDOFF_INVALID", f"schema 4 contract rejected the handoff ({e.code})")
     return P
 
 

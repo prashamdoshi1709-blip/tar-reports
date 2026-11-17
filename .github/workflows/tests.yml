@@ -22,7 +22,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0
+          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 hunspell hunspell-en-au hunspell-en-us
           python3 -m pip install -q -r tar_gen/requirements.txt
       - name: Existing publisher tests
         run: |
@@ -33,3 +33,34 @@ jobs:
           python3 -I tools/test_early_publish.py
       - name: Generator tests
         run: python3 tools/test_tar_gen.py
+
+  # Private end-to-end check on REAL data, before merge: newest Vitti package in Drive -> MODE B report -> every check ->
+  # the real publisher in verify mode. Read-only Drive, no AI, no Buffer, nothing committed, no artifacts; the public log
+  # carries dates, codes and hashes only and the output is deleted. Skips (green) until the Drive secret exists.
+  drive-shadow:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 hunspell hunspell-en-au hunspell-en-us
+          python3 -m pip install -q -r tar_gen/requirements.txt
+      - name: Private shadow run on the newest real package
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice title=DRIVE NOT CONFIGURED::GOOGLE_SERVICE_ACCOUNT_JSON secret not set; real-data shadow test skipped"
+            exit 0
+          fi
+          rc=0
+          python3 -m tar_gen.run --check-connections || rc=$?
+          [ $rc -eq 0 ] && { python3 -m tar_gen.run --latest 10 --no-notify --out "$RUNNER_TEMP/tar-shadow" || rc=$?; }
+          rm -rf "$RUNNER_TEMP/tar-shadow"
+          exit $rc

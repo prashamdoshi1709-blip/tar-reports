@@ -37,7 +37,7 @@ function tarDispatchTick() {
     var r = UrlFetchApp.fetch('https://api.github.com/repos/' + TAR_REPO + '/dispatches', {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
-      payload: JSON.stringify({ event_type: 'tar_package_ready', client_payload: { package: f.getName() } })
+      payload: JSON.stringify({ event_type: 'tar_package_ready' })   // no package details: the workflow reads Drive itself
     });
     if (r.getResponseCode() === 204) props.setProperty('TAR_DISPATCHED_' + today, f.getName());
     else console.warn('TAR dispatch failed: HTTP ' + r.getResponseCode());

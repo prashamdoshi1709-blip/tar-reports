@@ -36,15 +36,20 @@ def bars(rows, width=700, label_w=170, bar_h=22, gap=8):
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{y}" viewBox="0 0 {width} {y}">' + "".join(out) + "</svg>"
 
 
+def nobreak(s):
+    """Headline: never break a line inside a hyphenated word ("$6.40-a-share"). Display only; checks use the text."""
+    return re.sub(r"(?<=\w)-(?=\w)", "\u2011", e(s))
+
+
 def kpi_class(v):
     n = len(v)
     return "" if n <= 7 else (" m" if n <= 10 else " s")
 
 
-def source_lines(ident, take_label="TAR take"):
+def source_lines(ident, take_label="TAR take", uses_support=True):
     d = long_date(ident.date)
     supp = (f" and the {ident.company} ASX announcement{'s' if len(ident.support) > 1 else ''} of {d} supplied with it"
-            if ident.support else "")
+            if ident.support and uses_support else "")
     p1 = (f"Sources: Vitti Capital Daily Mover for {ident.company} (ASX: {ident.ticker}), {d}{supp}. "
           f"Share price moves are intraday figures as reported by Vitti, not closing prices. Company guidance and targets "
           f"are expectations, not results. TAR has summarised these sources and has not independently verified the figures.")
@@ -56,7 +61,7 @@ def source_lines(ident, take_label="TAR take"):
 
 def build_html(rep, ident):
     tk, d = ident.ticker, long_date(ident.date)
-    src1, src2 = source_lines(ident, rep.get("take_label") or "TAR take")
+    src1, src2 = source_lines(ident, rep.get("take_label") or "TAR take", rep.get("uses_support", True))
     kpis = "".join(
         f'<div class="kpi"><div class="v{TONES.get(k["tone"], "")}{kpi_class(k["value"])}">{e(k["value"])}</div>'
         f'<div class="t">{e(k["label"])}</div><div class="s">{e(k["note"])}</div></div>' for k in rep["kpis"])
@@ -81,7 +86,7 @@ def build_html(rep, ident):
 <div class="topbar"><span>The Announcement Room</span><span>ASX: {e(tk)} &nbsp;|&nbsp; {e(d)}</span></div>
 <div class="masthead"><div class="the">THE</div><div class="name">Announcement Room</div><div class="tag">{e(MASTHEAD_TAG)}</div></div>
 <div class="meta">{e(ident.company)} (ASX: {e(tk)})<span class="d">{e(rep['topic'])}</span></div>
-<h1>{e(rep['headline'])}</h1>
+<h1>{nobreak(rep['headline'])}</h1>
 <p class="lede">{e(rep['lede'])}</p>
 <div class="kpis">{kpis}</div>
 {chart}
