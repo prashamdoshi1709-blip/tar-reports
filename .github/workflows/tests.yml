@@ -1,0 +1,35 @@
+name: TAR Tests
+
+# Offline test suites on every pull request. Read-only: no secrets, no network calls to Buffer, Drive or Anthropic,
+# nothing committed. (tools/test_schema4_dryrun.py is not run here: it needs a real Vitti PDF, which is not stored in
+# this public repository.)
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0
+          python3 -m pip install -q -r tar_gen/requirements.txt
+      - name: Existing publisher tests
+        run: |
+          python3 -I tools/test_verify_public.py
+          python3 -I tools/test_status.py
+          python3 -I tools/test_filing_contract.py
+          python3 -I tools/test_schema4.py
+          python3 -I tools/test_early_publish.py
+      - name: Generator tests
+        run: python3 tools/test_tar_gen.py
