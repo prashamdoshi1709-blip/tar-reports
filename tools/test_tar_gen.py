@@ -580,6 +580,25 @@ def main():
         for k in ("GITHUB_ACTIONS", "GITHUB_REF"):
             os.environ.pop(k, None)
 
+        print("== 11b. duplicate rule in live runs vs the private --latest test")
+        fake2 = tempfile.mkdtemp(dir=tmp)
+        shutil.copytree(os.path.join(ROOT, "config"), os.path.join(fake2, "config"))
+        os.makedirs(os.path.join(fake2, "reports", "2026-11-18-TMZ"))
+        json.dump({"vitti_source": {"email_message_id": ident.gmail_id, "pdf_sha256": "x"}},
+                  open(os.path.join(fake2, "reports", "2026-11-18-TMZ", "publish.json"), "w"))
+        saved_root, saved_today = RUN.ROOT, RUN.today_syd
+        RUN.ROOT, RUN.today_syd = fake2, (lambda: D)
+        try:
+            rc_dup = RUN.main(["--local", root, "--date", D.isoformat(), "--out", os.path.join(tmp, "dup1"), "--no-notify"])
+            record("an already-published Vitti email stops a normal run (exit 1, no handoff)",
+                   rc_dup == 1 and not glob.glob(os.path.join(tmp, "dup1", "**", "publish.json"), recursive=True))
+            rc_lat = RUN.main(["--local", root, "--latest", "3", "--out", os.path.join(tmp, "dup2"), "--no-notify"])
+            record("the private --latest test builds it anyway, in shadow mode only",
+                   rc_lat == 0 and glob.glob(os.path.join(tmp, "dup2", "**", "publish.json"), recursive=True)
+                   and not os.path.exists(os.path.join(ROOT, "reports", "2026-11-18-TMZ")))
+        finally:
+            RUN.ROOT, RUN.today_syd = saved_root, saved_today
+
         print("== 12. Drive reader against a mock Drive API (no Google account needed)")
         from tar_gen.source import DriveSource
         mdrive = MockDrive(root, D)

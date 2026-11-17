@@ -252,7 +252,11 @@ def main(argv=None):
         log(f"PACKAGE {d}: sender, DKIM, hash and identity verified; {len(ident.support)} supporting announcement(s)"
             + ("" if PUBLIC else f" [{ident.company} ({ident.ticker}), {pkg.package_id}]"))
         dup = used_before(ident)
-        if dup:
+        if dup and a.latest:
+            # private test only (--latest forces shadow mode and can never publish): note it and keep building
+            log("DUPLICATE DETECTED: this Vitti email was already used by a published report; a live run would stop here. "
+                "Private test continues; nothing will be published.")
+        elif dup:
             raise GenError("DUPLICATE", f"this Vitti email / Daily Mover was already used by {os.path.relpath(dup, ROOT)}")
 
         rel = folder_rel(ident.ticker, d)
