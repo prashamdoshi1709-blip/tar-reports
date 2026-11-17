@@ -107,6 +107,27 @@ def now_syd():
     return datetime.now(SYD)
 
 
+GEN_SWITCHES = ("enabled", "publish", "rights_confirmed")
+
+
+def is_automated(P):
+    """A handoff written by the automated generator (tar_gen): it always records generator.name, and only it records
+    the Drive package folder. Manual and legacy handoffs (schemas 2, 3 and hand-made schema 4) carry neither."""
+    gen = P.get("generator")
+    vs = P.get("vitti_source") if isinstance(P.get("vitti_source"), dict) else {}
+    return (isinstance(gen, dict) and gen.get("name") == "tar_gen") or "drive_package_folder_id" in vs
+
+
+def automated_gate(P, cfg):
+    """None if this handoff may be published; otherwise the reason. Automated tar_gen handoffs need
+    vitti_generator.enabled, .publish and .rights_confirmed all true (in addition to every other check)."""
+    if not is_automated(P):
+        return None
+    g = cfg.get("vitti_generator") if isinstance(cfg, dict) else None
+    off = [k for k in GEN_SWITCHES if not (isinstance(g, dict) and g.get(k) is True)]
+    return ("TAR_GEN_GATE: automated tar_gen handoff refused; config vitti_generator " + ", ".join(off) + " not true") if off else None
+
+
 def gql(query, variables=None, soft=False):
     key = os.environ.get("BUFFER_API_KEY", "").strip()
     if not key:
@@ -238,8 +259,10 @@ def main():
         return
     if MODE not in ("scheduled", "dryrun", "verify"):
         die(f"unknown MODE {MODE!r}")
-    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "push"):
-        die("scheduling a post is only allowed from the GitHub schedule or push event")
+    # workflow_run: started when the "TAR Generate" workflow finishes (its handoff commit is made with the workflow token,
+    # which does not raise a push event). It runs on main with exactly the same checks as push/schedule.
+    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "push", "workflow_run"):
+        die("scheduling a post is only allowed from the GitHub schedule, push or workflow_run event")
     if MODE == "scheduled" and os.environ.get("GITHUB_REF") != "refs/heads/main":
         die("scheduling a post is only allowed from main")
 
@@ -277,6 +300,10 @@ def main():
             die("not a full ASX trading day")
         if not json.load(open("config/auto-publish.json")).get("enabled") is True:
             die("AUTO-PUBLISH OFF (config/auto-publish.json enabled is not true)")
+    if MODE in ("scheduled", "dryrun"):  # verify mode stays open: the generator's shadow contract check uses it
+        gate = automated_gate(P, json.load(open("config/auto-publish.json")))
+        if gate:
+            die(gate)
     cutoff = datetime(d.year, d.month, d.day, 15, 15, tzinfo=SYD)  # REV 8: latest moment a post may be created (3:15 PM Sydney)
 
     def time_ok():

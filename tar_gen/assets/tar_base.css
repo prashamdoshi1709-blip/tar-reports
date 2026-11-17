@@ -1,0 +1,74 @@
+/* TAR base stylesheet v1 - 4:5 portrait, 810 x 1012.5 pt. Tokens sampled from the XRF 13 Oct 2026 benchmark.
+   Source: "TAR Renderer (Phase 3A)" tar_base.css (Drive), unchanged below the font block, plus the v1.1 additions at the end. */
+@font-face { font-family:'Lora'; font-weight:400; font-style:normal; src:url(fonts/lora-latin-400-normal.woff2); }
+@font-face { font-family:'Lora'; font-weight:500; font-style:normal; src:url(fonts/lora-latin-500-normal.woff2); }
+@font-face { font-family:'Lora'; font-weight:600; font-style:normal; src:url(fonts/lora-latin-600-normal.woff2); }
+@font-face { font-family:'Lora'; font-weight:700; font-style:normal; src:url(fonts/lora-latin-700-normal.woff2); }
+@font-face { font-family:'Lora'; font-weight:400; font-style:italic; src:url(fonts/lora-latin-400-italic.woff2); }
+@font-face { font-family:'Lora'; font-weight:500; font-style:italic; src:url(fonts/lora-latin-500-italic.woff2); }
+@font-face { font-family:'Lora'; font-weight:600; font-style:italic; src:url(fonts/lora-latin-600-italic.woff2); }
+@font-face { font-family:'Lora'; font-weight:700; font-style:italic; src:url(fonts/lora-latin-700-italic.woff2); }
+@font-face { font-family:'Inter'; font-weight:400; src:url(fonts/inter-latin-400-normal.woff2); }
+@font-face { font-family:'Inter'; font-weight:500; src:url(fonts/inter-latin-500-normal.woff2); }
+@font-face { font-family:'Inter'; font-weight:600; src:url(fonts/inter-latin-600-normal.woff2); }
+@font-face { font-family:'Inter'; font-weight:700; src:url(fonts/inter-latin-700-normal.woff2); }
+
+@page { size: 810pt 1012.5pt; margin: 0; }
+:root { --bg:#f7f2e8; --panel:#f0e7d8; --navy:#1b2733; --teal:#2f6f6b; --orange:#b5653a; --grey:#b9c4c2; --muted:#6b6f72; --rule:#dbd8d1; }
+* { box-sizing:border-box; }
+html,body { margin:0; padding:0; background:var(--bg); }
+body { font-family:'Inter',sans-serif; color:var(--navy); font-size:11.5pt; line-height:1.38; }
+.page { position:relative; width:810pt; height:1012.5pt; padding:30pt 48pt 0 48pt; background:var(--bg); page-break-after:always; overflow:hidden; }
+.page:last-child { page-break-after:auto; }
+.body { height:880pt; }
+.topbar { border-top:2.2pt solid var(--navy); padding-top:8pt; display:flex; justify-content:space-between; font-size:8.5pt; letter-spacing:2.2pt; text-transform:uppercase; font-weight:600; color:#33414e; }
+.masthead { text-align:center; margin:6pt 0 4pt; }
+.masthead .the { font-size:8.5pt; letter-spacing:4pt; color:var(--orange); font-weight:600; }
+.masthead .name { font-family:'Lora',serif; font-size:36pt; letter-spacing:4pt; text-transform:uppercase; line-height:1.1; font-weight:500; }
+.masthead .tag { font-family:'Lora',serif; font-style:italic; font-size:9.5pt; color:var(--muted); border-top:.6pt solid var(--rule); border-bottom:.6pt solid var(--rule); padding:3pt 0; margin-top:4pt; }
+.runhead { border-bottom:.8pt solid var(--navy); padding-bottom:6pt; display:flex; justify-content:space-between; align-items:flex-end; border-top:2.2pt solid var(--navy); padding-top:8pt; }
+.runhead .l { font-family:'Lora',serif; font-weight:600; font-size:19pt; letter-spacing:2.4pt; text-transform:uppercase; }
+.runhead .r { text-align:right; font-size:8.5pt; letter-spacing:1.4pt; text-transform:uppercase; color:var(--muted); font-weight:600; line-height:1.3; }
+.meta { font-size:9pt; letter-spacing:1.4pt; text-transform:uppercase; font-weight:600; color:var(--orange); margin:8pt 0 6pt; border-bottom:.6pt solid var(--rule); padding-bottom:6pt; }
+.meta span.d { color:var(--muted); letter-spacing:1pt; font-weight:500; margin-left:10pt; }
+h1 { font-family:'Lora',serif; font-weight:700; font-size:33pt; line-height:1.13; margin:8pt 0 8pt; }
+h2.big { font-family:'Lora',serif; font-weight:700; font-size:30pt; line-height:1.12; margin:8pt 0 6pt; }
+.lede { font-size:12.5pt; line-height:1.4; margin:0 0 10pt; }
+.kpis { display:flex; border-top:.8pt solid var(--navy); border-bottom:.6pt solid var(--rule); margin:6pt 0 10pt; }
+.kpi { flex:1; padding:8pt 14pt 8pt 14pt; border-left:.6pt solid var(--rule); }
+.kpi:first-child { border-left:none; padding-left:0; }
+.kpi .v { font-family:'Lora',serif; font-weight:700; font-size:40pt; line-height:1.05; color:var(--teal); }
+.kpi .v.o { color:var(--orange); } .kpi .v.n { color:var(--navy); }
+.kpi .t { font-weight:700; font-size:11pt; margin-top:3pt; } .kpi .s { font-size:9.5pt; color:var(--muted); }
+.label { font-size:8.8pt; letter-spacing:1.3pt; text-transform:uppercase; font-weight:600; color:var(--orange); margin:10pt 0 6pt; }
+.panel { background:var(--panel); border-top:.8pt solid var(--rule); padding:10pt 14pt; margin:8pt 0; }
+.panel.dark { background:var(--navy); color:#f7f2e8; border:none; padding:12pt 16pt; }
+.panel.dark .label { color:#d99a74; margin-top:0; }
+.panel p, .panel.dark p { margin:0; }
+.tag { display:inline-block; font-size:7.5pt; letter-spacing:1pt; text-transform:uppercase; font-weight:600; border:.8pt solid var(--teal); color:var(--teal); padding:1pt 5pt; margin-left:6pt; vertical-align:middle; }
+.tag.o { border-color:var(--orange); color:var(--orange); }
+.chip { display:inline-block; border:.8pt solid var(--orange); color:var(--navy); font-size:9pt; padding:3pt 8pt; margin:0 5pt 5pt 0; }
+.item { display:flex; gap:14pt; border-top:.6pt solid var(--rule); padding:8pt 0; }
+.item .n { font-family:'Lora',serif; font-weight:700; font-size:30pt; color:var(--teal); width:42pt; line-height:1; }
+.item h3 { font-family:'Lora',serif; font-size:14pt; margin:0 0 3pt; }
+.item p { margin:0; font-size:10.5pt; }
+.cols { display:flex; gap:22pt; } .cols > div { flex:1; }
+.wtw p { margin:0; padding:6pt 0; border-top:.6pt solid var(--rule); font-size:10.5pt; } .wtw p b { display:block; }
+.src { position:absolute; left:48pt; right:48pt; bottom:44pt; border-top:.6pt solid var(--rule); padding-top:5pt; font-size:7.6pt; color:var(--muted); line-height:1.35; }
+.foot { position:absolute; left:48pt; right:48pt; bottom:20pt; display:flex; justify-content:space-between; font-size:8.6pt; }
+.foot .l b { font-weight:700; } .foot .r { color:var(--orange); letter-spacing:1.4pt; text-transform:uppercase; font-weight:600; font-size:8pt; }
+.banner { position:absolute; top:0; left:0; right:0; background:var(--orange); color:#fff; text-align:center; font-size:8pt; letter-spacing:2pt; font-weight:700; padding:3pt 0; }
+svg text { font-family:'Inter',sans-serif; }
+
+/* v1.1 additions for the automated Vitti generator (tar_gen). */
+.masthead .tag { display:inline-block; border-left:2pt solid var(--teal); border-right:2pt solid var(--teal); padding:3pt 8pt; letter-spacing:.6pt; text-transform:uppercase; font-style:normal; font-family:'Lora',serif; font-size:9pt; }
+.kpi .v.m { font-size:31pt; } .kpi .v.s { font-size:24pt; }
+.facts p { margin:0 0 5pt; font-size:10.8pt; } .facts p:last-child { margin-bottom:0; }
+.facts p b { font-weight:700; }
+.two p { margin:0; padding:5pt 0 6pt; border-top:.6pt solid var(--rule); font-size:10.3pt; }
+.two p b { display:block; font-weight:700; }
+.para { font-size:10.8pt; margin:0 0 6pt; }
+.chartnote { font-size:9pt; color:var(--muted); margin:2pt 0 4pt; }
+.take { background:var(--panel); border-top:1.2pt solid var(--orange); padding:12pt 16pt; margin:12pt 0 0; }
+.take .label { margin-top:0; }
+.take p { margin:0; font-size:11.3pt; line-height:1.45; }

@@ -14,6 +14,13 @@ on:
   push:
     branches: [main]
     paths: ['reports/*/publish.json']
+  # The automated generator (workflow "TAR Generate", tar_gen/) commits publish.json with the workflow token, which does not
+  # raise a push event, so its completion starts this publisher directly. Same checks; the gate below still requires
+  # today's publish.json, so a generator run that produced nothing does nothing here.
+  workflow_run:
+    workflows: ["TAR Generate"]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: '*/5 11-14 * * 1-5'
       timezone: 'Australia/Sydney'
