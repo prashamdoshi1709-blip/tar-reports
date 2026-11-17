@@ -1,9 +1,9 @@
-"""AI report writer: Claude (Anthropic API) turns one Vitti Daily Mover package into the TAR report content as JSON.
+"""MODE A AI writer (Google Gemini free tier) and the offline fixture writer.
 
-One streamed Messages API call with structured output (output_config.format = JSON schema) so the reply always parses.
-If tar_gen.checks or the layout measurement finds problems, the same conversation continues with the exact problems
-listed (up to max_attempts). The API key comes from ANTHROPIC_API_KEY only. The model never sees or writes the company
-identity, date, sources line, disclaimer or hashtag rules: those are fixed by the pipeline.
+The AI returns the TAR report content as JSON (response JSON schema). If tar_gen.checks or the layout measurement finds
+problems, the conversation continues with the exact problems listed (up to max_attempts). The key comes from the
+GEMINI_API_KEY secret only. The AI never writes the company identity, date, sources line, disclaimer or hashtag rules:
+those are fixed by the pipeline. MODE B (no AI at all) is tar_gen/template.py.
 """
 import json, os
 
@@ -80,53 +80,121 @@ def user_prompt(ident):
     return "\n\n".join(parts)
 
 
-class ClaudeWriter:
-    def __init__(self, model, effort="high", max_tokens=32000):
-        try:
-            import anthropic
-        except ImportError as e:  # pragma: no cover
-            raise GenError("DEPENDENCY", f"anthropic SDK is not installed ({e})")
-        if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
-            raise GenError("ANTHROPIC_SECRET_MISSING", "ANTHROPIC_API_KEY secret is not set")
-        self.anthropic = anthropic
-        self.client = anthropic.Anthropic(max_retries=4, timeout=600)
-        self.model, self.effort, self.max_tokens = model, effort, max_tokens
+class GeminiWriter:
+    """MODE A: Google Gemini API, free tier (no billing account). Plain HTTPS to the generativelanguage REST endpoint.
+
+    Data rule: the free ("unpaid") Gemini API terms allow Google to use prompts and responses to improve its products,
+    including human review, and ask users not to submit confidential information. This writer therefore refuses to run
+    unless config vitti_generator.gemini_data_use_authorised is true (the owner's explicit permission to send Vitti
+    material to that service). Errors are classified so the pipeline can fall back to MODE B:
+      AI_QUOTA (429 / RESOURCE_EXHAUSTED), AI_UNAVAILABLE (5xx, timeouts, network), AI_AUTH (401/403, bad key),
+      AI_MODEL_UNAVAILABLE (no configured model is offered to this key), AI_BLOCKED (safety block), AI_BAD_JSON."""
+    mode = "A-gemini"
+
+    def __init__(self, models, authorised, key=None, timeout=120, pause=None):
+        import requests
+        self.requests = requests
+        if authorised is not True:
+            raise GenError("AI_NOT_AUTHORISED", "sending Vitti material to Gemini is not authorised (gemini_data_use_authorised=false)")
+        self.key = (key if key is not None else os.environ.get("GEMINI_API_KEY", "")).strip()
+        if not self.key:
+            raise GenError("AI_NOT_CONFIGURED", "GEMINI_API_KEY secret is not set")
+        self.timeout = timeout
+        self.pause = float(os.environ.get("TAR_GEMINI_PAUSE", "5")) if pause is None else pause
+        self.base = os.environ.get("GEMINI_API_BASE", "https://generativelanguage.googleapis.com").rstrip("/")
         self.usage = []
+        self.model = self._pick(models)
+
+    def _call(self, method, path, body=None):
+        url = f"{self.base}/v1beta/{path}"
+        last = None
+        for attempt in range(3):
+            try:
+                r = self.requests.request(method, url, json=body, timeout=self.timeout,
+                                          headers={"x-goog-api-key": self.key, "Content-Type": "application/json"})
+            except self.requests.RequestException as e:
+                last = GenError("AI_UNAVAILABLE", f"Gemini request failed ({type(e).__name__})", transient=True)
+            else:
+                if r.status_code == 200:
+                    return r.json()
+                if r.status_code == 429:
+                    raise GenError("AI_QUOTA", "Gemini free-tier quota exhausted or rate limited (HTTP 429)", transient=True)
+                if r.status_code in (401, 403):
+                    raise GenError("AI_AUTH", f"Gemini rejected the API key or project (HTTP {r.status_code})")
+                if r.status_code == 404:
+                    raise GenError("AI_MODEL_UNAVAILABLE", "Gemini model not found for this key (HTTP 404)")
+                if r.status_code == 400:
+                    raise GenError("AI_BAD_REQUEST", "Gemini rejected the request (HTTP 400)")
+                last = GenError("AI_UNAVAILABLE", f"Gemini answered HTTP {r.status_code}", transient=True)
+            import time; time.sleep(self.pause * (attempt + 1))
+        raise last
+
+    def _pick(self, models):
+        """Use the first configured model that this key can actually call (checked live, never assumed)."""
+        names, token = set(), None
+        while True:
+            j = self._call("GET", "models?pageSize=1000" + (f"&pageToken={token}" if token else ""))
+            for m in j.get("models", []):
+                if "generateContent" in (m.get("supportedGenerationMethods") or []):
+                    names.add(m["name"].split("/", 1)[-1])
+            token = j.get("nextPageToken")
+            if not token:
+                break
+        for m in models:
+            if m in names:
+                return m
+        raise GenError("AI_MODEL_UNAVAILABLE", "none of the configured Gemini models is offered to this key: " + ", ".join(models))
 
     def start(self, ident):
         return [{"role": "user", "content": user_prompt(ident)}]
 
-    def complete(self, messages):
-        """Returns (report_dict, assistant_content_to_append). Raises GenError (transient for API outages)."""
-        a = self.anthropic
+    def generate(self, contents, schema=True):
+        cfg = {"responseMimeType": "application/json", "temperature": 0.2}
+        if schema:
+            cfg["responseJsonSchema"] = SCHEMA
+        body = {"systemInstruction": {"parts": [{"text": SYSTEM}]}, "contents": contents, "generationConfig": cfg}
         try:
-            with self.client.beta.messages.stream(
-                model=self.model, max_tokens=self.max_tokens, system=SYSTEM, messages=messages,
-                output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": SCHEMA}},
-                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-            ) as stream:
-                msg = stream.get_final_message()
-        except (a.RateLimitError, a.InternalServerError, a.APIConnectionError, a.APITimeoutError) as e:
-            raise GenError("AI_UNAVAILABLE", f"Anthropic API unavailable after retries ({type(e).__name__})", transient=True)
-        except a.AuthenticationError:
-            raise GenError("AI_AUTH", "ANTHROPIC_API_KEY was rejected (401)")
-        except a.APIStatusError as e:
-            raise GenError("AI_HTTP", f"Anthropic API error HTTP {e.status_code}", transient=e.status_code >= 500)
-        self.usage.append({"model": msg.model, "input_tokens": msg.usage.input_tokens, "output_tokens": msg.usage.output_tokens})
-        if msg.stop_reason == "refusal":
-            raise GenError("AI_REFUSAL", "the model declined this request")
-        if msg.stop_reason == "max_tokens":
-            raise GenError("AI_TRUNCATED", "the model reply was cut off at max_tokens")
-        text = next((b.text for b in msg.content if b.type == "text"), None)
+            return self._call("POST", f"models/{self.model}:generateContent", body)
+        except GenError as e:
+            if e.code == "AI_BAD_REQUEST" and schema:  # older endpoint without JSON-schema support: the checks still validate shape
+                return self._call("POST", f"models/{self.model}:generateContent", dict(body, generationConfig={k: v for k, v in cfg.items() if k != "responseJsonSchema"}))
+            raise
+
+    def complete(self, messages):
+        contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in messages]
+        j = self.generate(contents)
+        if (j.get("promptFeedback") or {}).get("blockReason"):
+            raise GenError("AI_BLOCKED", "Gemini blocked the prompt")
+        cands = j.get("candidates") or []
+        if not cands:
+            raise GenError("AI_BAD_JSON", "Gemini returned no candidate")
+        fin = cands[0].get("finishReason")
+        if fin in ("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
+            raise GenError("AI_BLOCKED", f"Gemini stopped the reply ({fin})")
+        if fin == "MAX_TOKENS":
+            raise GenError("AI_TRUNCATED", "Gemini reply was cut off")
+        text = "".join(p.get("text", "") for p in (cands[0].get("content") or {}).get("parts", []))
+        u = j.get("usageMetadata") or {}
+        self.usage.append({"model": self.model, "input_tokens": u.get("promptTokenCount"), "output_tokens": u.get("candidatesTokenCount")})
         try:
             rep = json.loads(text)
-        except (TypeError, ValueError):
-            raise GenError("AI_BAD_JSON", "the model reply was not valid JSON")
-        return rep, msg.content
+        except ValueError:
+            raise GenError("AI_BAD_JSON", "Gemini reply was not valid JSON")
+        if not isinstance(rep, dict):
+            raise GenError("AI_BAD_JSON", "Gemini reply was not a JSON object")
+        return rep, text
+
+    def ping(self):
+        """Synthetic, data-free call: proves the free-tier key can generate (no Vitti material is sent)."""
+        j = self._call("POST", f"models/{self.model}:generateContent",
+                       {"contents": [{"role": "user", "parts": [{"text": "Reply with the single word OK."}]}],
+                        "generationConfig": {"temperature": 0}})
+        return bool(j.get("candidates"))
 
 
 class FixtureWriter:
     """Offline stand-in: returns prepared report JSON objects in order (tests and historical replays without an API key)."""
+    mode = "fixture"
     def __init__(self, reports):
         self.reports = list(reports)
         self.usage = []

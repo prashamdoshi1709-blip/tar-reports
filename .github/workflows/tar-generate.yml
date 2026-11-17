@@ -1,7 +1,7 @@
 name: TAR Generate
 
 # Automated TAR report generator (tar_gen/). Reads the Vitti Daily Mover package that the existing Gmail -> Apps Script
-# import writes to Google Drive, has Claude write the report, renders the two-page PDF and cover, checks everything and
+# import writes to Google Drive, writes the report (MODE B deterministic by default; MODE A Gemini free tier only if authorised), renders the two-page PDF and cover, checks everything and
 # writes a schema 4 handoff. It NEVER calls Buffer: in publish mode it commits the report + publish.json to main and the
 # existing "TAR Buffer Schedule" workflow (started by workflow_run) re-verifies and publishes it.
 #
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check-connections = Drive + Anthropic key test, nothing generated; shadow = build and verify today''s report, never publish; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
+        description: 'check-connections = Drive + optional Gemini key test (synthetic prompt), nothing generated; shadow = build and verify today''s report, never publish; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
         type: choice
         options: [check-connections, shadow, offline-tests, run]
         default: check-connections
@@ -71,7 +71,7 @@ jobs:
       - name: Generate
         if: steps.gate.outputs.go == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'offline-tests')
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MODE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}

@@ -41,21 +41,22 @@ def kpi_class(v):
     return "" if n <= 7 else (" m" if n <= 10 else " s")
 
 
-def source_lines(ident):
+def source_lines(ident, take_label="TAR take"):
     d = long_date(ident.date)
     supp = (f" and the {ident.company} ASX announcement{'s' if len(ident.support) > 1 else ''} of {d} supplied with it"
             if ident.support else "")
     p1 = (f"Sources: Vitti Capital Daily Mover for {ident.company} (ASX: {ident.ticker}), {d}{supp}. "
           f"Share price moves are intraday figures as reported by Vitti, not closing prices. Company guidance and targets "
           f"are expectations, not results. TAR has summarised these sources and has not independently verified the figures.")
-    p2 = (f"Sources: Vitti Capital Daily Mover, {d}{supp}. Views in the TAR take are general commentary on the "
-          f"announced information. TAR has not independently verified the figures.")
+    view = ("The Vitti view is Vitti Capital's own commentary, reproduced as published."
+            if take_label == "Vitti view" else "Views in the TAR take are general commentary on the announced information.")
+    p2 = f"Sources: Vitti Capital Daily Mover, {d}{supp}. {view} TAR has not independently verified the figures."
     return p1, p2
 
 
 def build_html(rep, ident):
     tk, d = ident.ticker, long_date(ident.date)
-    src1, src2 = source_lines(ident)
+    src1, src2 = source_lines(ident, rep.get("take_label") or "TAR take")
     kpis = "".join(
         f'<div class="kpi"><div class="v{TONES.get(k["tone"], "")}{kpi_class(k["value"])}">{e(k["value"])}</div>'
         f'<div class="t">{e(k["label"])}</div><div class="s">{e(k["note"])}</div></div>' for k in rep["kpis"])
@@ -97,7 +98,8 @@ def build_html(rep, ident):
 <div class="wtw">{why}</div>
 <div class="label">What investors should watch</div>
 {watch}
-<div class="take"><div class="label">TAR take</div><p>{e(rep['take'])}</p></div>
+<div class="take"><div class="label">{e(rep.get('take_label') or 'TAR take')}</div><p>{e(rep['take'])}</p></div>
+{f'<div class="label">Where Vitti&#39;s figures come from</div><p class="para">{e(rep["sources_note"])}</p>' if rep.get("sources_note") else ""}
 </div>
 <div class="src">{e(src2)}</div>{foot.replace('{n}', '2')}</div>
 </body></html>"""

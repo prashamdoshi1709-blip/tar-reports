@@ -21,7 +21,7 @@ ASX_CODE = re.compile(r"\bASX\s*:\s*([A-Z0-9]{2,5})\b")
 UNIT_AFTER = re.compile(r"^\s?(%|m\b|bn\b|b\b|k\b|x\b|c\b|cps\b|per ?cent|million|billion|thousand|times|cents)", re.I)
 
 LIMITS = {"headline": (30, 120), "title": (12, 54), "topic": (4, 52), "lede": (80, 430), "facts_label": (4, 50),
-          "context_label": (4, 50), "take": (150, 560)}
+          "context_label": (4, 50), "take": (60, 560)}
 ITEM = {"facts": (3, 5, 70, 270), "context": (2, 4, 60, 230), "why": (3, 3, 70, 250), "watch": (3, 4, 50, 260)}
 CAP = {"intro": (80, 520), "context": (60, 480), "looking_ahead": (60, 460)}
 
@@ -48,6 +48,9 @@ def visible_strings(rep):
     out = []
     for k in ("headline", "title", "topic", "lede", "facts_label", "context_label", "take"):
         out.append((k, rep[k]))
+    for k in ("take_label", "sources_note"):
+        if rep.get(k):
+            out.append((k, rep[k]))
     for i, k in enumerate(rep["kpis"]):
         out += [(f"kpis[{i}].value", k["value"]), (f"kpis[{i}].label", k["label"]), (f"kpis[{i}].note", k["note"])]
     c = rep.get("chart") or {}

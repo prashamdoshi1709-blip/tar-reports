@@ -10,7 +10,9 @@ Vitti email (reports@vitti.capital, ~10:47 AM)
   -> existing Apps Script import (5.2.x)          -> Drive "TAR Daily Sources/<date>_<time>_<gmailId>_a1/"   [unchanged]
   -> GitHub Actions "TAR Generate" (tar_gen/)     every 10 min 10:00-14:50 Sydney, or at once via apps-script/TarDispatch.gs
        read package (Drive, read-only) -> verify sender, DKIM, hash, ticker/company/date
-       -> Claude writes the report JSON -> figure/wording/attribution checks (fed back, up to 3 attempts)
+       -> MODE B (default): deterministic report from the Daily Mover's own sections, no AI, nothing leaves GitHub
+          MODE A (only if authorised): Gemini free tier writes the report JSON, falls back to MODE B on any problem
+       -> figure/wording/attribution checks (fed back, up to 3 attempts)
        -> two-page PDF + cover (WeasyPrint, TAR base stylesheet, Lora/Inter) -> layout + visual check -> verify_clean_pdf.py
        -> schema 4 publish.json -> the REAL tools/buffer_schedule.py run in verify mode on the result (contract check)
        -> publish mode only: commit PDF + cover + publish.json to main
@@ -42,6 +44,25 @@ Sources, attribution ("Vitti Capital Daily Mover ... TAR has not independently v
 and the caption's first line, date line and hashtags are fixed text, never AI-written. Handoffs always carry
 `vitti_source.independently_verified: false`.
 
+## Writers: MODE A and MODE B ($0 either way)
+
+| | MODE B `template` (default) | MODE A `gemini` |
+|---|---|---|
+| What writes the text | Fixed templates around Vitti's own sections (headline, KPI tiles, chart, drivers, what changes now, timeline, key risks, Vitti view, sources) read by `tar_gen/dailymover.py` | Google Gemini API, free tier (no billing account) |
+| Cost | none | none within the free quota |
+| Data sent outside GitHub | none | the Daily Mover text and attached announcements, to Google's unpaid service |
+| Analysis | none added; page 2 shows Vitti's drivers, risks and the "Vitti view", labelled as Vitti's | plain-English explanation from the supplied material only |
+| When it refuses | a section the report needs is missing (`INSUFFICIENT_SOURCE`) | any failure -> MODE B |
+
+MODE A runs only when `writer_mode` is `gemini`, `gemini_data_use_authorised` is `true` and the `GEMINI_API_KEY` secret
+exists. Google's Gemini API terms say content sent to unpaid services may be used to improve Google products and read by
+human reviewers, and ask users not to submit confidential information; Vitti's emails say the Daily Mover is
+"unreviewed and not for distribution". So keep `gemini_data_use_authorised` false unless Vitti agrees.
+`gemini_models` is a preference list; the generator asks the API which models the key can call and uses the first
+match, so a renamed or retired model never breaks a run (it falls back to MODE B). Quota exhaustion (429), outages,
+key or model problems, safety blocks, malformed replies, or a reply that still fails the checks after 3 attempts all
+fall back to MODE B. If MODE B cannot make an accurate report either, nothing is published and the reason is recorded.
+
 ## Switches (`config/auto-publish.json`)
 
 | Setting | Effect |
@@ -51,7 +72,7 @@ and the caption's first line, date line and hashtags are fixed text, never AI-wr
 | `vitti_generator.rights_confirmed` | must be true to publish; set only after the owner confirms the right to republish Vitti material |
 | `enabled` (top level, existing master switch) | must also be true; shared with the existing publisher |
 
-Retries and notifications: transient problems (Drive or Anthropic outage, package not there yet) are retried by the next
+Retries and notifications: transient problems (Drive or Gemini outage, package not there yet) are retried by the next
 scheduled run until 2:30 PM; no package by 1:00 PM, or any final failure, opens the issue
 "TAR generator: no report for <date>" (GitHub emails the owner) and the run turns red. While that issue is open the
 generator does not retry that date. Each outcome is also logged on the issue "TAR generator: daily log". Issues contain
@@ -61,20 +82,22 @@ reason codes only, never report content (the repository is public).
 
 | Secret | Needed for |
 |---|---|
-| `ANTHROPIC_API_KEY` | the AI writer (Claude Opus 5.5, billed per use by Anthropic; no Claude plan limits) |
+| `GEMINI_API_KEY` | optional, MODE A only: a free Google AI Studio key (no billing account) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | reading the Drive packages (service account with Viewer on "TAR Daily Sources") |
 | `TAR_REVIEW_PASSWORD` | optional: encrypted review copy of shadow reports in the run artifacts (7z, AES) |
 | `BUFFER_API_KEY` | existing, unchanged |
 
 ## Tests
 
-`python3 tools/test_tar_gen.py` runs offline (synthetic Daily Mover for a fictional company, so no Vitti content is
-stored here). `--historical DIR` replays real packages kept outside the repository. The workflow's manual run offers
-`offline-tests`, `check-connections` (Drive + Anthropic key, nothing generated) and `shadow`.
+`python3 tools/test_tar_gen.py` runs offline (a synthetic Daily Mover for a fictional company in Vitti's exact layout,
+so no Vitti content is stored here; Gemini is tested against a local mock server: success, 429 quota, 500 outage,
+unknown model, bad JSON, invented figures, safety block, bad key, no authorisation, no key). `--historical DIR` replays real packages kept outside the repository. The workflow's manual run offers
+`offline-tests`, `check-connections` (Drive, plus the Gemini key with a synthetic prompt if one is set; nothing
+generated) and `shadow`. In GitHub Actions the logs, step summary and issues carry dates, reason codes and hashes only.
 
 ## Go-live checklist
 
-1. Secrets added; manual run `check-connections` passes.
+1. `GOOGLE_SERVICE_ACCOUNT_JSON` secret added; manual run `check-connections` passes. (MODE B needs nothing else.)
 2. `enabled=true`, `publish=false`: shadow reports for a few trading days; review the encrypted copies.
 3. Owner confirms in writing the right to republish Vitti Capital Daily Mover material publicly; set `rights_confirmed=true`.
 4. Set `publish=true`. Disable the Claude scheduled routines that produced reports (1:15 PM / 1:58 PM / 3 PM) so they do

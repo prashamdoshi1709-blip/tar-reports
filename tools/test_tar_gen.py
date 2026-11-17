@@ -22,6 +22,7 @@ from tar_gen.render import render, visual_check  # noqa: E402
 from tar_gen.source import LocalSource  # noqa: E402
 from tar_gen.vitti import verify_package  # noqa: E402
 from tar_gen.writer import FixtureWriter, SCHEMA  # noqa: E402
+from tar_gen.template import TemplateWriter  # noqa: E402
 
 results = []
 D = date(2026, 11, 18)
@@ -46,41 +47,64 @@ def spaced(s):
     return " ".join(s)
 
 
-def synthetic_daily_mover(path, tk="TMZ", company="Test Minerals Limited", d=D, title_tk=None):
+def synthetic_daily_mover(path, tk="TMZ", company="Test Minerals Limited", d=D, title_tk=None, drop_risks=False):
+    """Fictional company in Vitti's real Daily Mover layout (1092 x 876 pt, same section coordinates, letter-spaced
+    headings, same PDF metadata), so the structured reader and MODE B are tested without any real Vitti content."""
     from weasyprint import HTML
-    body = f"""<html><body style="font-family:sans-serif;font-size:9pt">
-<p>{spaced('ASX:' + tk)}</p><p>vitti.capital</p><p>{spaced('ONE-PAGE SNAPSHOT')}</p>
-<h1>{company}</h1><h2>Test Minerals Rises 12.4% in Morning Trade After $85.0M Offtake Deal</h2>
-<p>+12.4% {spaced('SHARE MOVE · $1.250 · AS AT 10:25')}</p><p>$85.0M {spaced('OFFTAKE VALUE')}</p>
-<p>$42.5M {spaced('CASH AT 30 SEPTEMBER')}</p><p>FY27 {spaced('FIRST DELIVERIES')}</p>
-<p>Revenue grew to $310.2m in FY26 from $255.0m in FY25. Chart: FY25 $255.0m, FY26 $310.2m.</p>
-<p>WHAT MAY HAVE DRIVEN THE MOVE 1 Binding five-year offtake worth $85.0m with a Japanese buyer
-2 Price is fixed for the first two years 3 Removes the main funding question for Stage 2</p>
-<p>WHAT CHANGES NOW 1 Final investment decision on Stage 2 targeted for March 2027 2 Construction tender due in Q1 2027
-3 Debt process of up to $60.0m now under way</p>
-<p>HOW WE GOT HERE 26 Aug 2026 FY26 results: revenue $310.2m 30 Oct 2026 Quarterly: cash of $42.5m
-18 Nov 2026 Binding offtake agreement signed</p>
-<p>KEY RISKS REMAINING Funding: Stage 2 still needs up to $60.0m of debt. Execution: Construction has not started.
-Customer concentration: one buyer takes 70% of output.</p>
-<p>Vitti view: the offtake answers the demand question; funding and construction are now the tests.</p>
-<p>Source: Offtake announcement, ASX 18 Nov 2026; FY26 Results, ASX 26 Aug 2026; exchange feed.</p>
-<p>General information only. This is not personal financial advice.</p>
-<p>Daily Mover Snapshot | {long_date(d)} | Analyst: Synthetic Test</p>
-<p>{"padding text for a realistic text layer. " * 20}</p></body></html>"""
+
+    def at(x, y, text, size=9, ls=0, w=None, center=False, bold=False):
+        style = f"left:{x}pt;top:{y}pt;font-size:{size}pt;letter-spacing:{ls}pt;" + (f"width:{w}pt;" if w else "") + \
+                ("text-align:center;" if center else "") + ("font-weight:700;" if bold else "")
+        return f'<div style="position:absolute;white-space:nowrap;{style}">{text}</div>'
+    el = [at(46, 24, f"ASX:{tk}", ls=3), at(956, 27, "vitti.capital"), at(46, 80, "ONE-PAGE SNAPSHOT", ls=3),
+          at(46, 100, company, size=20, bold=True),
+          at(46, 138, "Test Minerals Rises 12.4% in Morning Trade as $85.0M Offtake Deal Signed", size=13, bold=True)]
+    for x, v, lab in ((95, "+12.4%", "SHARE MOVE · $1.250 · AS AT 10:25"), (345, "$85.0M", "OFFTAKE VALUE"),
+                      (595, "$42.5M", "CASH AT 30 SEPTEMBER"), (845, "FY27", "FIRST DELIVERIES")):
+        el += [at(x, 189, v, size=16, bold=True), at(x, 215, lab, size=7, ls=1.5)]
+    el += [at(63, 260, "REVENUE GREW STRONGLY IN FY26", ls=2), at(940, 263, "Revenue"),
+           at(73, 274, "Revenue rose to $310.2m in FY26 from $255.0m in FY25"),
+           at(300, 298, "$255.0m", w=90, center=True), at(741, 288, "$310.2m", w=90, center=True),
+           at(105, 288, "300"), at(105, 350, "200"), at(300, 390, "FY25", w=90, center=True), at(741, 390, "FY26", w=90, center=True),
+           at(63, 408, "Revenue per the FY26 Results, ASX 26 Aug 2026"),
+           at(89, 458, "WHAT MAY HAVE DRIVEN THE MOVE", ls=2), at(595, 458, "WHAT CHANGES NOW", ls=2)]
+    left = ["Binding five-year offtake worth $85.0m signed with a Japanese buyer", "Price is fixed for the first two years of supply",
+            "Vitti says the deal removes the main funding question for Stage 2"]
+    right = ["Final investment decision on Stage 2 targeted for March 2027", "Debt process of up to $60.0m is now under way",
+             "Construction tender is due in Q1 2027"]
+    for i, (a, b) in enumerate(zip(left, right)):
+        y = 480 + 20 * i
+        el += [at(65, y + 3, str(i + 1)), at(82, y, a), at(571, y + 3, str(i + 1)), at(588, y, b)]
+    el += [at(46, 586, "HOW WE GOT HERE", ls=2)]
+    for x, dt, t in ((46, "26 Aug 2026", "FY26 results: revenue $310.2m"), (296, "30 Oct 2026", "Quarterly report: cash of $42.5m"),
+                     (546, "18 Nov 2026", "Binding offtake agreement signed")):
+        el += [at(x, 615, dt, bold=True), at(x, 630, t)]
+    if not drop_risks:
+        el += [at(46, 676, "KEY RISKS REMAINING", ls=2)]
+        for x, h, t in ((93, "Debt funding", "Stage 2 still needs up to $60.0m of debt."),
+                        (430, "Construction start", "Construction has not started; the tender is due in Q1 2027."),
+                        (766, "Customer concentration", "One buyer takes 70% of output under the offtake.")):
+            el += [at(x, 702, h, bold=True), at(x, 718, t)]
+    el += [at(46, 780, "Vitti view: The offtake answers the demand question; funding and construction are now the tests."),
+           at(46, 810, "Source: Offtake announcement, ASX 18 Nov 2026; FY26 Results, ASX 26 Aug 2026; exchange feed."),
+           at(61, 840, f"Daily Mover Snapshot | {long_date(d)} | Analyst: Synthetic Test", size=7),
+           at(563, 834, "General information only. This is not personal financial advice.", size=7)]
+    body = ('<html><head><style>@page{size:1092pt 876pt;margin:0}body{margin:0;font-family:sans-serif}</style></head>'
+            '<body><div style="position:relative;width:1092pt;height:876pt">' + "".join(el) + "</div></body></html>")
     doc = HTML(string=body).render()
-    doc.metadata.title = f"{title_tk or tk} Daily Mover — {long_date(d)}"
+    doc.metadata.title = f"{title_tk or tk} Daily Mover \u2014 {long_date(d)}"
     doc.metadata.description = f"Daily Mover: {company} ({tk})"
     doc.metadata.authors = ["Synthetic Test, Vitti Capital"]
     doc.write_pdf(path)
 
 
 def make_package(root, tk="TMZ", d=D, sender="reports@vitti.capital", dkim=True, subject_tk=None, name_tk=None,
-                 title_tk=None, recv=None, mode="VITTI"):
+                 title_tk=None, recv=None, mode="VITTI", drop_risks=False):
     pid = f"{d.isoformat()}_1046_1a1e000000000001_a1"
     p = os.path.join(root, pid)
     os.makedirs(p)
     pdf = os.path.join(p, "daily_mover.pdf")
-    synthetic_daily_mover(pdf, tk=tk, d=d, title_tk=title_tk)
+    synthetic_daily_mover(pdf, tk=tk, d=d, title_tk=title_tk, drop_risks=drop_risks)
     sha = hashlib.sha256(open(pdf, "rb").read()).hexdigest()
     auth = "mx.google.com; dkim=pass header.i=@vitti.capital header.s=resend" if dkim else "mx.google.com; dkim=fail"
     idx = {"schema_version": "4.0", "package_id": pid, "import_mode": mode, "processed_at": f"{d.isoformat()}T10:51:26+11:00",
@@ -130,6 +154,55 @@ GOOD = {
                 "hashtags": ["TestMinerals", "Mining"]}}
 
 
+class MockGemini:
+    """Local stand-in for the Gemini REST API (no network). Replies are consumed in order per generateContent call."""
+    def __init__(self):
+        import http.server, threading
+        outer = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, code, obj):
+                b = json.dumps(obj).encode()
+                self.send_response(code); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+            def do_GET(self):
+                outer.log.append({"path": self.path, "key": self.headers.get("x-goog-api-key")})
+                self._send(200, {"models": [{"name": f"models/{m}", "supportedGenerationMethods": ["generateContent"]} for m in outer.models]})
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length", 0)); self.rfile.read(n)
+                outer.log.append({"path": self.path, "key": self.headers.get("x-goog-api-key")})
+                outer.gen_count += 1
+                kind, payload = outer.replies.pop(0) if outer.replies else ("500", None)
+                if kind == "ok":
+                    self._send(200, {"candidates": [{"content": {"parts": [{"text": json.dumps(payload)}]}, "finishReason": "STOP"}],
+                                     "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 10}})
+                elif kind == "text":
+                    self._send(200, {"candidates": [{"content": {"parts": [{"text": payload}]}, "finishReason": "STOP"}]})
+                elif kind == "blocked":
+                    self._send(200, {"promptFeedback": {"blockReason": "SAFETY"}})
+                else:
+                    self._send(int(kind), {"error": {"code": int(kind), "status": "RESOURCE_EXHAUSTED" if kind == "429" else "ERROR"}})
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.reset()
+
+    def reset(self, models=(), replies=()):
+        self.models, self.replies, self.log, self.gen_count = list(models), list(replies), [], 0
+
+    @property
+    def count(self):
+        return len(self.log)
+
+    def stop(self):
+        self.srv.shutdown()
+
+
 def main():
     hist = sys.argv[sys.argv.index("--historical") + 1] if "--historical" in sys.argv else None
     tmp = tempfile.mkdtemp(prefix="tar_gen_test_")
@@ -169,7 +242,7 @@ def main():
         record("rounded figure is caught", "12%" in probs(lambda r: r.update(lede=r["lede"].replace("12.4%", "12%"))))
         record("own calculation is caught", "25.2%" in probs(lambda r: r["watch"][1].update(body="Revenue grew 25.2% in FY26, a TAR calculation.")))
         record("figure in a KPI is checked", "$99" in probs(lambda r: r["kpis"][1].update(value="$99.9M")) or "99.9" in probs(lambda r: r["kpis"][1].update(value="$99.9M")))
-        record("chart value not in source is caught", "chart.bars" in probs(lambda r: r["chart"]["bars"][0].update(value=200.0)))
+        record("chart value not in source is caught", "chart.bars" in probs(lambda r: r["chart"]["bars"][0].update(value=233.3)))
         record("another company's ASX code is caught", "ABC" in probs(lambda r: r["facts"][0].update(body="Peer ASX: ABC signed a similar deal.")))
         record("'draft' wording is caught", "draft" in probs(lambda r: r.update(take=r["take"] + " This draft is final.")))
         record("clock time is caught", "clock" in probs(lambda r: r.update(lede=r["lede"] + " As at 10:25 the move held.")))
@@ -180,7 +253,7 @@ def main():
         record("small counts and years are not treated as figures", checks.unsupported_numbers("two of 3 approvals in 2027", set(), set()) == [])
         record("money is never exempt", checks.unsupported_numbers("a $5 fee", set(), set()) == ["5"])
 
-        print("== 3. write -> check -> render loop (fixture writer stands in for Claude)")
+        print("== 3. write -> check -> render loop (fixture writer stands in for the AI)")
         out = os.path.join(tmp, "out")
         bad = copy.deepcopy(GOOD); bad["facts"][0]["body"] = "The offtake is worth $91.5m over five years."
         w = FixtureWriter([bad, GOOD])
@@ -252,8 +325,132 @@ def main():
         record("publisher accepts the workflow_run event used to start it after the generator",
                '"workflow_run")' in open(os.path.join(ROOT, "tools", "buffer_schedule.py")).read())
 
+        print("== 6. MODE B: deterministic report, no AI, no API")
+        from tar_gen.template import TemplateWriter
+        from tar_gen.dailymover import parse as dm_parse
+        dm = dm_parse(pkg.daily_mover_path, ident.company)
+        record("structured reader: 4 KPI tiles, chart, 3 drivers, 3 changes, 3 timeline entries, 3 risks, view, sources",
+               len(dm["kpis"]) == 4 and dm["chart"] and len(dm["drivers"]) == 3 and len(dm["changes"]) == 3
+               and len(dm["timeline"]) == 3 and len(dm["risks"]) == 3 and dm["view"] and dm["source"])
+        tw = TemplateWriter(ident, pkg.daily_mover_path)
+        rb = build(ident, tw, os.path.join(tmp, "modeb"), log=lambda *_: None)
+        rep = rb["rep"]
+        record("MODE B report passes every content, layout and PDF check", rb["attempts"] >= 1 and os.path.isfile(rb["pdf"]))
+        record("MODE B figures are Vitti's exactly (KPI values and chart)",
+               [k["value"] for k in rep["kpis"]] == ["+12.4%", "$85.0M", "$42.5M", "FY27"]
+               and [b["display"] for b in rep["chart"]["bars"]] == ["$255.0m FY25", "$310.2m FY26"])
+        record("MODE B adds no analysis: page 2 is Vitti's drivers, risks and view, labelled as Vitti's",
+               rep["take_label"] == "Vitti view" and rep["take"].startswith("The offtake answers")
+               and [w["body"] for w in rep["watch"]][2].startswith("One buyer takes 70%"))
+        record("MODE B removes the clock time from the share-move tile", not any(":" in k["note"] for k in rep["kpis"]))
+        txtb = " ".join(subprocess.run(["pdftotext", "-layout", rb["pdf"], "-"], capture_output=True, text=True).stdout.split())
+        record("MODE B PDF says the Vitti view is Vitti's own commentary", "Vitti view is Vitti Capital's own commentary" in txtb)
+        Pb = make_handoff(ident, rb, pkg, flags, "template", writer_mode=tw.mode)
+        record("MODE B handoff accepted by the REAL publisher (verify mode)", "VERIFY PASS" in contract_check(Pb, rb["pdf"], rb["png"]))
+        rthin = tempfile.mkdtemp(dir=tmp); make_package(rthin, drop_risks=True)
+        pthin = LocalSource(rthin).packages_for(D)[0]
+        expect_gen_error("MODE B refuses a Daily Mover missing a needed section (no invented content)",
+                         lambda: TemplateWriter(verify_package(pthin, D, GEN), pthin.daily_mover_path), "INSUFFICIENT_SOURCE")
+        try:
+            TemplateWriter(verify_package(pthin, D, GEN), pthin.daily_mover_path)
+        except GenError as e:
+            record("the refusal names exactly the missing section", e.msg.endswith(": three key risks"), e.msg)
+        rc = RUN.main(["--local", rthin, "--date", D.isoformat(), "--out", os.path.join(tmp, "thin"), "--no-notify"])
+        record("insufficient source: run stops (exit 1) and writes no handoff", rc == 1 and not glob.glob(os.path.join(tmp, "thin", "**", "publish.json"), recursive=True))
+        rc = RUN.main(["--local", root, "--date", D.isoformat(), "--out", os.path.join(tmp, "cli_b"), "--no-notify"])
+        Pcli = json.load(open(glob.glob(os.path.join(tmp, "cli_b", "reports", "*", "publish.json"))[0]))
+        record("default configuration runs MODE B end to end (no API key anywhere)", rc == 0 and Pcli["generator"]["writer_mode"] == "B-template")
+
+        print("== 7. MODE A: Gemini free tier against a local mock server (synthetic data only)")
+        mock = MockGemini()
+        os.environ.update(GEMINI_API_BASE=mock.url, GEMINI_API_KEY="test-key-not-real", TAR_GEMINI_PAUSE="0")
+        from tar_gen.writer import GeminiWriter
+        gcfg = dict(g, writer_mode="gemini", gemini_models=["gemini-x-lite", "gemini-y"], gemini_data_use_authorised=True)
+
+        def run_mode(cfgv, name):
+            o = os.path.join(tmp, name)
+            return RUN.write_report(ident, pkg, cfgv, o, log=lambda *_: None)
+
+        mock.reset(models=["gemini-y", "gemini-x-lite"], replies=[("ok", GOOD)])
+        res, wm, model, fb = run_mode(gcfg, "ga1")
+        record("authorised + quota available: MODE A used, first configured model the key offers", wm == "A-gemini" and model == "gemini-x-lite" and fb is None)
+        record("API key sent in the x-goog-api-key header, never in the URL",
+               all(r["key"] == "test-key-not-real" and "key=" not in r["path"] for r in mock.log))
+        mock.reset(models=["gemini-x-lite"], replies=[("ok", GOOD)])
+        res, wm, model, fb = run_mode(dict(gcfg, gemini_data_use_authorised=False), "ga2")
+        record("NOT authorised: Gemini never contacted (0 requests), MODE B used", wm == "B-template" and mock.count == 0 and fb == "AI_NOT_AUTHORISED")
+        expect_gen_error("GeminiWriter itself refuses without authorisation", lambda: GeminiWriter(["gemini-x-lite"], False), "AI_NOT_AUTHORISED")
+        mock.reset(models=["gemini-x-lite"], replies=[("429", None)])
+        res, wm, model, fb = run_mode(gcfg, "ga3")
+        record("free quota exhausted (429): falls back to MODE B and still produces the report", wm == "B-template" and fb == "AI_QUOTA" and os.path.isfile(res["pdf"]))
+        mock.reset(models=["gemini-x-lite"], replies=[("500", None)] * 6)
+        res, wm, model, fb = run_mode(gcfg, "ga4")
+        record("Gemini outage (repeated 500): retried, then MODE B", wm == "B-template" and fb == "AI_UNAVAILABLE" and mock.gen_count == 3)
+        mock.reset(models=["gemini-other"], replies=[])
+        res, wm, model, fb = run_mode(gcfg, "ga5")
+        record("configured model not offered to the key: MODE B", fb == "AI_MODEL_UNAVAILABLE" and wm == "B-template")
+        mock.reset(models=["gemini-x-lite"], replies=[("text", "not json")])
+        res, wm, model, fb = run_mode(gcfg, "ga6")
+        record("malformed AI reply: MODE B", fb == "AI_BAD_JSON" and wm == "B-template")
+        mock.reset(models=["gemini-x-lite"], replies=[("ok", bad)] * 3)
+        res, wm, model, fb = run_mode(gcfg, "ga7")
+        record("AI keeps inventing a figure (3 attempts): its report is discarded, MODE B used", fb == "CHECKS_FAILED" and wm == "B-template")
+        mock.reset(models=["gemini-x-lite"], replies=[("blocked", None)])
+        res, wm, model, fb = run_mode(gcfg, "ga8")
+        record("AI safety block: MODE B", fb == "AI_BLOCKED" and wm == "B-template")
+        mock.reset(models=["gemini-x-lite"], replies=[("401", None)])
+        res, wm, model, fb = run_mode(gcfg, "ga9")
+        record("invalid key (401): MODE B", fb == "AI_AUTH" and wm == "B-template")
+        mock.reset(models=["gemini-x-lite"], replies=[("429", None)])
+        expect_gen_error("fallback switched off: quota error stops the run", lambda: run_mode(dict(gcfg, fallback_to_template=False), "ga10"), "AI_QUOTA")
+        mock.reset(models=["gemini-x-lite"], replies=[("429", None)])
+        expect_gen_error("neither mode can produce an accurate report: stop with the reason",
+                         lambda: RUN.write_report(verify_package(pthin, D, GEN), pthin, gcfg, os.path.join(tmp, "ga11"), log=lambda *_: None), "INSUFFICIENT_SOURCE")
+        mock.reset(models=["gemini-x-lite"], replies=[])
+        os.environ.pop("GEMINI_API_KEY")
+        res, wm, model, fb = run_mode(gcfg, "ga12")
+        record("no GEMINI_API_KEY secret: MODE B, nothing sent", fb == "AI_NOT_CONFIGURED" and mock.count == 0)
+        mock.stop()
+        for k in ("GEMINI_API_BASE", "TAR_GEMINI_PAUSE"):
+            os.environ.pop(k, None)
+
+        print("== 8. public logs, summaries and artifacts carry no confidential content")
+        summ = os.path.join(tmp, "summary.md")
+        env = dict(os.environ, GITHUB_ACTIONS="true", GITHUB_REF="refs/heads/claude/test", GITHUB_STEP_SUMMARY=summ)
+        env.pop("GITHUB_TOKEN", None)
+        secret_bits = ["TMZ", "Test Minerals", "85.0", "42.5", "1.250", "Offtake", "offtake", "Japanese", "12.4"]
+        for label, extra in (("successful run", []), ("failing run", ["--fixture-writer", _dump(tmp, [bad, bad, bad])])):
+            cfgp = os.path.join(tmp, "cfg.json")
+            c2 = json.load(open(os.path.join(ROOT, "config", "auto-publish.json")))
+            json.dump(c2, open(cfgp, "w"))
+            pr = subprocess.run([sys.executable, "-m", "tar_gen.run", "--local", root, "--date", D.isoformat(), "--out",
+                                 os.path.join(tmp, "pub_" + label[:4]), "--config", cfgp] + extra,
+                                cwd=ROOT, env=env, capture_output=True, text=True)
+            seen = pr.stdout + pr.stderr + (open(summ).read() if os.path.exists(summ) else "")
+            leaks = [b for b in secret_bits if b in seen]
+            record(f"public log + step summary of a {label}: no ticker, company, figures or report text", not leaks and pr.stdout.strip(), f"leaked {leaks}")
+        wf = open(os.path.join(ROOT, ".github", "workflows", "tar-generate.yml")).read()
+        record("review copies are only kept encrypted (7z AES, encrypted file names), else deleted",
+               "-mhe=on" in wf and 'rm -rf generator-output' in wf and "TAR_REVIEW_PASSWORD" in wf)
+        runsrc = open(os.path.join(ROOT, "tar_gen", "run.py")).read()
+        record("failure issue body uses only the reason code and a fixed description",
+               'notify.notify_failure(d, e.code, REASONS.get(e.code, "see the reason code"), run_url())' in runsrc
+               and "notify.notify_failure(d, e.code, e.msg" not in runsrc)
+
+        print("== 9. duplicate protection")
+        fake = tempfile.mkdtemp(dir=tmp)
+        os.makedirs(os.path.join(fake, "reports", "2026-11-10-ABC"))
+        json.dump({"vitti_source": {"email_message_id": ident.gmail_id, "pdf_sha256": "x"}}, open(os.path.join(fake, "reports", "2026-11-10-ABC", "publish.json"), "w"))
+        os.makedirs(os.path.join(fake, "reports", "2026-11-18-XYZ"))
+        saved_root, RUN.ROOT = RUN.ROOT, fake
+        try:
+            record("an email already used by an earlier report is refused", RUN.used_before(ident) is not None)
+            record("a second report for a day that already has one is refused", bool(RUN.existing_report(D)))
+        finally:
+            RUN.ROOT = saved_root
+
         if hist:
-            print(f"== 6. historical Vitti packages from {hist} (kept outside the repository)")
+            print(f"== 10. historical Vitti packages from {hist} (kept outside the repository)")
             for p in sorted(glob.glob(os.path.join(hist, "*"))):
                 dm = os.path.join(p, "daily_mover.pdf")
                 if not os.path.isfile(dm):
@@ -271,6 +468,13 @@ def main():
                 except GenError as e:
                     record(f"{name}: identity verified", False, f"{e.code}: {e.msg}")
                     continue
+                try:
+                    rb = build(hid, TemplateWriter(hid, hp.daily_mover_path), os.path.join(tmp, "histb", name), log=lambda *_: None)
+                    Pb = make_handoff(hid, rb, hp, dict(hid.checks, final_pdf_valid=True, visual_check_done=True, no_duplicate=True,
+                                                       master_switch_enabled=True), "template", writer_mode="B-template")
+                    record(f"{name}: MODE B report + real publisher verify", "VERIFY PASS" in contract_check(Pb, rb["pdf"], rb["png"]))
+                except GenError as e:
+                    record(f"{name}: MODE B report", False, f"{e.code}: {e.msg[:200]}")
                 rj = os.path.join(p, "reply.json")
                 if os.path.isfile(rj):
                     o = os.path.join(tmp, "hist", name)

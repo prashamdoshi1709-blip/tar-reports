@@ -23,7 +23,7 @@ def _layout_feedback(layout):
     return out
 
 
-def build(ident, writer, out_dir, max_attempts=3, log=print):
+def build(ident, writer, out_dir, max_attempts=3, log=print, verbose=True):
     """Returns dict(rep, caption, title, clean_title, pdf, png, layout, attempts). Writes only into out_dir."""
     os.makedirs(out_dir, exist_ok=True)
     stem = file_stem(ident.ticker, ident.date)
@@ -63,7 +63,8 @@ def build(ident, writer, out_dir, max_attempts=3, log=print):
             return {"rep": rep, "caption": cap, "title": title, "clean_title": ctitle, "pdf": pdf, "png": png,
                     "layout": layout, "attempts": attempt}
         last = problems
-        log(f"  attempt {attempt}: {len(problems)} problem(s): " + " | ".join(problems[:6]))
+        # Problem texts can quote figures or names from the source: only counts go to public logs (verbose=False).
+        log(f"  attempt {attempt}: {len(problems)} problem(s)" + (": " + " | ".join(problems[:6]) if verbose else ""))
         feedback = ("Your report did not pass TAR's automated checks. Fix every problem below and return the complete "
                     "corrected JSON. Keep everything that was already correct.\n- " + "\n- ".join(problems))
         messages = messages + [{"role": "assistant", "content": content}, {"role": "user", "content": feedback}]

@@ -1,6 +1,6 @@
 name: TAR Tests
 
-# Offline test suites on every pull request. Read-only: no secrets, no network calls to Buffer, Drive or Anthropic,
+# Offline test suites on every pull request. Read-only: no secrets, no network calls to Buffer, Drive or Gemini,
 # nothing committed. (tools/test_schema4_dryrun.py is not run here: it needs a real Vitti PDF, which is not stored in
 # this public repository.)
 on:

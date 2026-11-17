@@ -17,7 +17,7 @@ from datetime import datetime
 from .common import FC, GenError, ROOT, SYD, GENERATOR_VERSION, folder_rel, long_date, public_urls, sha256_file
 
 
-def make_handoff(ident, result, pkg, flags, model, run_id=None):
+def make_handoff(ident, result, pkg, flags, model, run_id=None, writer_mode=None, fallback=None):
     pdf_url, cover_url = public_urls(ident.ticker, ident.date)
     P = {
         "schema": 4, "mode": "LIVE", "ticker": ident.ticker, "company_name": ident.company,
@@ -30,7 +30,8 @@ def make_handoff(ident, result, pkg, flags, model, run_id=None):
                          "rfc822_message_id": ident.rfc822, "drive_package_folder_id": pkg.folder_id,
                          "supporting_announcements": [n for n, _ in ident.support]},
         "claude_verification": {k: bool(flags.get(k)) for k in FC.V4_FLAGS},
-        "generator": {"name": "tar_gen", "version": GENERATOR_VERSION, "model": model, "attempts": result["attempts"],
+        "generator": {"name": "tar_gen", "version": GENERATOR_VERSION, "writer_mode": writer_mode, "model": model,
+                      "fallback_reason": fallback, "attempts": result["attempts"],
                       "run_id": run_id, "cover_sha256": sha256_file(result["png"])},
     }
     FC.validate_v4(P)  # same validator the publisher uses; raises ContractError

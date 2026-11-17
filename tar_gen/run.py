@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-"""TAR Vitti generator: Drive package -> AI report -> two-page PDF + cover + caption -> schema 4 handoff.
+"""TAR Vitti generator: Drive package -> report (MODE A Gemini free tier, or MODE B deterministic) -> two-page PDF +
+cover + caption -> schema 4 handoff.
 
     python3 -m tar_gen.run                      # what GitHub Actions runs (today, Sydney)
-    python3 -m tar_gen.run --check-connections  # read-only: Drive folder visible, Anthropic key valid; no tokens spent
+    python3 -m tar_gen.run --check-connections  # Drive folder readable; Gemini key usable (synthetic prompt, no Vitti data)
+
+Writer choice (config vitti_generator.writer_mode):
+    "template"  MODE B only: no AI, no API, no cost, nothing sent outside the GitHub runner (default)
+    "gemini"    MODE A first, ONLY if gemini_data_use_authorised is true and GEMINI_API_KEY is set; on quota exhaustion,
+                outage, auth or model problems, a block, or a report that still fails the checks, fall back to MODE B.
+MODE B refuses (INSUFFICIENT_SOURCE) when the Daily Mover lacks a section a report needs; then nothing is published.
+
+Public logs: the repository is public, so in GitHub Actions the log, step summary and issues carry dates, reason codes
+and hashes only, never company names, tickers before publication, figures or report text.
     python3 -m tar_gen.run --local DIR --date 2026-11-17 --fixture-writer replies.json --out /tmp/x   # offline
 
 Publication gate (ALL required, otherwise SHADOW mode: everything is built and verified, nothing is committed):
@@ -24,7 +34,25 @@ from . import notify
 from .handoff import contract_check, make_handoff
 from .pipeline import build
 from .source import make_source
+from .template import TemplateWriter
 from .vitti import verify_package
+
+PUBLIC = os.environ.get("GITHUB_ACTIONS") == "true"
+FALLBACK_CODES = {"AI_QUOTA", "AI_UNAVAILABLE", "AI_AUTH", "AI_MODEL_UNAVAILABLE", "AI_BAD_REQUEST", "AI_BLOCKED",
+                  "AI_BAD_JSON", "AI_TRUNCATED", "AI_NOT_CONFIGURED", "AI_NOT_AUTHORISED", "CHECKS_FAILED"}
+REASONS = {
+    "NO_PACKAGE": "no Vitti Daily Mover package in Drive for the day", "NO_VALID_PACKAGE": "packages failed verification",
+    "DUPLICATE": "this Vitti email was already used", "INSUFFICIENT_SOURCE": "the Daily Mover lacks a section a report needs",
+    "CHECKS_FAILED": "the report failed the content checks", "PDF_NOT_CLEAN": "the PDF failed verify_clean_pdf.py",
+    "PUBLISHER_REJECTED": "the existing publisher's checks rejected the handoff",
+}
+
+
+def safe(e):
+    """Public-safe reason: code plus a fixed description. Detailed messages can contain tickers, names or figures."""
+    if not PUBLIC:
+        return f"{e.code}: {e.msg}"
+    return f"{e.code}: {REASONS.get(e.code, 'see the reason code')}"
 
 
 def log(msg):
@@ -114,14 +142,44 @@ def check_connections(g):
     key = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     if not key:
         raise GenError("DRIVE_SECRET_MISSING", "GOOGLE_SERVICE_ACCOUNT_JSON secret is not set")
-    name = DriveSource(g["drive_root_folder_id"], key).ping()
-    log(f"DRIVE OK: service account can read folder '{name}'")
-    import anthropic
-    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
-        raise GenError("ANTHROPIC_SECRET_MISSING", "ANTHROPIC_API_KEY secret is not set")
-    m = anthropic.Anthropic().models.retrieve(g["model"])
-    log(f"ANTHROPIC OK: key accepted, model {m.id} available (no tokens spent)")
-    log("::notice title=CONNECTIONS OK::Drive folder readable and Anthropic key valid; nothing generated or published")
+    DriveSource(g["drive_root_folder_id"], key).ping()
+    log("DRIVE OK: the service account can read the TAR Daily Sources folder")
+    if not os.environ.get("GEMINI_API_KEY", "").strip():
+        log("GEMINI: no GEMINI_API_KEY secret; MODE B (no AI) will be used. That is fine and costs nothing.")
+    else:
+        from .writer import GeminiWriter
+        w = GeminiWriter(g.get("gemini_models", []), authorised=True)  # authorised here only for a synthetic, data-free prompt
+        ok = w.ping()
+        log(f"GEMINI OK: free-tier key works with model {w.model} (synthetic prompt only, no Vitti material sent)" if ok
+            else "GEMINI: key accepted but no reply; MODE B will be used when needed")
+        if g.get("gemini_data_use_authorised") is not True:
+            log("GEMINI NOT USED FOR REPORTS: gemini_data_use_authorised is false, so Vitti material is never sent to it")
+    log(f"WRITER MODE: {g.get('writer_mode', 'template')}")
+    log("::notice title=CONNECTIONS OK::Drive readable; writer configuration checked; nothing generated or published")
+
+
+def write_report(ident, pkg, g, out_dir, fixture=None, log=print, verbose=True):
+    """MODE A (if allowed) then MODE B. Returns (result, writer_mode, model, fallback_reason)."""
+    attempts = int(g.get("max_attempts", 3))
+    if fixture is not None:
+        from .writer import FixtureWriter
+        w = FixtureWriter(fixture)
+        return build(ident, w, out_dir, max_attempts=attempts, log=log, verbose=verbose), w.mode, "fixture", None
+    fallback = None
+    if g.get("writer_mode") == "gemini":
+        try:
+            from .writer import GeminiWriter
+            w = GeminiWriter(g.get("gemini_models", []), g.get("gemini_data_use_authorised"))
+            log(f"MODE A: Gemini free tier, model {w.model}")
+            return build(ident, w, out_dir, max_attempts=attempts, log=log, verbose=verbose), w.mode, w.model, None
+        except GenError as e:
+            if e.code not in FALLBACK_CODES or g.get("fallback_to_template", True) is not True:
+                raise
+            fallback = e.code
+            log(f"MODE A not used ({e.code}); falling back to MODE B (deterministic, no AI)")
+    w = TemplateWriter(ident, pkg.daily_mover_path)
+    log("MODE B: deterministic report from the Daily Mover (no AI, nothing sent outside the runner)")
+    return build(ident, w, out_dir, max_attempts=attempts, log=log, verbose=verbose), w.mode, "template", fallback
 
 
 def main(argv=None):
@@ -173,42 +231,39 @@ def main(argv=None):
                 break
             except GenError as e:
                 errors.append(f"{p.package_id}: {e.code}")
-                log(f"  package {p.package_id} rejected: {e}")
+                log(f"  a package was rejected: {safe(e)}")
         if not ident:
             raise GenError("NO_VALID_PACKAGE", "every package for the day failed verification: " + "; ".join(errors))
-        log(f"PACKAGE {pkg.package_id}: {ident.company} ({ident.ticker}) {d}; sender, DKIM, hash and identity verified; "
-            f"{len(ident.support)} supporting announcement(s)")
+        log(f"PACKAGE {d}: sender, DKIM, hash and identity verified; {len(ident.support)} supporting announcement(s)"
+            + ("" if PUBLIC else f" [{ident.company} ({ident.ticker}), {pkg.package_id}]"))
         dup = used_before(ident)
         if dup:
             raise GenError("DUPLICATE", f"this Vitti email / Daily Mover was already used by {os.path.relpath(dup, ROOT)}")
 
-        if a.fixture_writer:
-            from .writer import FixtureWriter
-            writer, model = FixtureWriter(json.load(open(a.fixture_writer, encoding="utf-8"))), "fixture"
-        else:
-            from .writer import ClaudeWriter
-            writer, model = ClaudeWriter(g["model"], g.get("effort", "high")), g["model"]
         rel = folder_rel(ident.ticker, d)
         out_dir = os.path.join(out_root, rel)
-        res = build(ident, writer, out_dir, max_attempts=int(g.get("max_attempts", 3)), log=log)
+        fixture = json.load(open(a.fixture_writer, encoding="utf-8")) if a.fixture_writer else None
+        res, wmode, model, fallback = write_report(ident, pkg, g, out_dir, fixture, log=log, verbose=not PUBLIC)
         flags = dict(ident.checks, final_pdf_valid=True, visual_check_done=True, no_duplicate=True,
                      master_switch_enabled=cfg.get("enabled") is True)
-        P = make_handoff(ident, res, pkg, flags, model, os.environ.get("GITHUB_RUN_ID"))
+        P = make_handoff(ident, res, pkg, flags, model, os.environ.get("GITHUB_RUN_ID"), writer_mode=wmode, fallback=fallback)
         out = contract_check(P, res["pdf"], res["png"])
         log("CONTRACT CHECK: the existing publisher (buffer_schedule.py, verify mode) accepts this handoff: "
             + next((l for l in out.splitlines() if l.startswith("FILING CONTRACT OK")), "VERIFY PASS"))
         json.dump(P, open(os.path.join(out_dir, "publish.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
         open(os.path.join(out_dir, "caption.txt"), "w", encoding="utf-8").write(P["caption"])
-        json.dump({"usage": writer.usage, "layout": res["layout"], "attempts": res["attempts"]},
+        json.dump({"writer_mode": wmode, "model": model, "fallback": fallback, "layout": res["layout"], "attempts": res["attempts"]},
                   open(os.path.join(out_dir, "run.json"), "w"), indent=1)
 
         ok, why = publish_allowed(cfg, g)
         if a.mode == "shadow" or not ok or not live_day:
             reason = "forced shadow mode" if a.mode == "shadow" else ("; ".join(why) or "historical/local run")
-            log(f"SHADOW MODE ({reason}): report built and fully verified in {out_dir}; nothing committed or published.")
-            summary(f"### SHADOW REPORT READY\n- {ident.ticker} {d}\n- PDF sha256 `{P['pdf_sha256']}`\n- attempts {res['attempts']}\n- not published: {reason}")
+            log(f"SHADOW MODE ({reason}): report built and fully verified with {wmode}; nothing committed or published."
+                + ("" if PUBLIC else f" Output: {out_dir}"))
+            summary(f"### SHADOW REPORT READY\n- date {d}\n- writer {wmode}" + (f" (fallback from {fallback})" if fallback else "")
+                    + f"\n- PDF sha256 `{P['pdf_sha256']}`\n- attempts {res['attempts']}\n- not published: {reason}")
             if notify_on:
-                notify.notify_log(f"{d.isoformat()} {ident.ticker}: shadow report built and verified (not published: {reason}). "
+                notify.notify_log(f"{d.isoformat()}: shadow report built and verified with {wmode} (not published: {reason}). "
                                   f"Encrypted review copy in the run artifacts if TAR_REVIEW_PASSWORD is set. {run_url()}")
             return 0
         sha = commit_and_push([res["pdf"], res["png"], os.path.join(out_dir, "publish.json")], rel,
@@ -221,14 +276,14 @@ def main(argv=None):
         return 0
     except GenError as e:
         final = (not e.transient) or give_up or not live_day
-        log(f"NO REPORT: {e}")
+        log(f"NO REPORT: {safe(e)}")
         if not final:
-            log(f"::warning title=RETRY LATER::{e.code}: {e.msg} (the next scheduled run retries)")
+            log(f"::warning title=RETRY LATER::{safe(e)} (the next scheduled run retries)")
             return 0
-        log(f"::error title=NO REPORT::{e.code}: {e.msg}")
-        summary(f"### NO REPORT\n- date {d}\n- `{e.code}`: {e.msg}")
+        log(f"::error title=NO REPORT::{safe(e)}")
+        summary(f"### NO REPORT\n- date {d}\n- {safe(e)}")
         if notify_on and live_day:
-            notify.notify_failure(d, e.code, e.msg, run_url())
+            notify.notify_failure(d, e.code, REASONS.get(e.code, "see the reason code"), run_url())
         return 1
 
 

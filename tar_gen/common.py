@@ -20,7 +20,7 @@ PAGES = BS.PAGES
 DISCLAIMER = BS.DISCLAIMER          # "General information only. Not financial advice."
 BAD = BS.BAD                        # not approved / approved for publication / draft
 CLOSURES, EARLY_CLOSE = BS.CLOSURES, BS.EARLY_CLOSE
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 CONFIG_PATH = os.path.join(ROOT, "config", "auto-publish.json")
 
 
