@@ -1,0 +1,31 @@
+{
+  "schema": 4,
+  "mode": "LIVE",
+  "ticker": "MYX",
+  "company_name": "Mayne Pharma Group Limited",
+  "report_date": "17 November 2026",
+  "report_date_iso": "2026-11-17",
+  "package_id": "2026-11-17_1046_1a1e6c2b1d32657a_a1",
+  "handoff_created_at": "2026-11-17T12:37:43+11:00",
+  "pdf_sha256": "fbf594f31d608dfa091124499dc05704aa45f4a46bee878cfb6434a0f4a26fa6",
+  "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-17-MYX/TAR_MYX_17Nov2026.pdf",
+  "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-17-MYX/TAR_MYX_17Nov2026_cover.png",
+  "title": "Mayne Pharma: Gedeon Richter Bid at $6.40 a Share",
+  "caption": "The Announcement Room | Mayne Pharma Group Limited (MYX)\n\nMayne Pharma entered a binding Scheme Implementation Deed with Gedeon Richter at $6.40 cash per share, a 99.4% premium to the prior close. According to the Vitti Capital Daily Mover, shares rose 78.5% in morning trade.\n\nThe deal is conditional. It needs shareholder, court, FIRB, US HSR and CFIUS clearance, and the separate $55.5 million sale of the International segment to Evaris Pharma must complete first. That sale still needs ACCC approval.\n\nKey points:\n\n• Binding Scheme at $6.40 cash per share\n• 99.4% premium to the prior close, 124% to the 30-day VWAP\n• Shares up 78.5% in morning trade (not a closing move)\n• Board unanimously recommends the Scheme in the absence of a Superior Proposal\n• FY26 underlying EBITDA of $34.2 million, down 27% from $47.0 million\n• Implementation is targeted for March 2027\n\nLooking ahead, the Scheme Booklet and Independent Expert's Report are due in mid-December 2026, with the Scheme Meeting set for late January 2027. These are timetable targets, not completed events, and a Superior Proposal could still emerge during exclusivity.\n\nIn this two-page investor report, we look at:\n\n• What the Scheme terms are\n• The conditions that must be met\n• The FY26 earnings backdrop\n• Key dates and what to watch next\n\nASX: MYX | 17 November 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #MYX #MaynePharma #TakeoverBid #Investing #AustralianStocks\n",
+  "vitti_source": {
+    "basis": "VITTI_DAILY_MOVER",
+    "email_message_id": "1a1e6c2b1d32657a",
+    "pdf_name": "MYX-2026-11-17-draft.pdf",
+    "pdf_sha256": "d6b81821c42f93e6c648cd659e8f98745c0c94bdf6b09d23aa89993afc17fd5f",
+    "independently_verified": false
+  },
+  "claude_verification": {
+    "vitti_sender_verified": true,
+    "vitti_pdf_readable": true,
+    "company_date_match": true,
+    "final_pdf_valid": true,
+    "visual_check_done": true,
+    "no_duplicate": true,
+    "master_switch_enabled": true
+  }
+}
