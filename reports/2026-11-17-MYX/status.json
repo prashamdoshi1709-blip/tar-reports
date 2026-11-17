@@ -1,6 +1,6 @@
 {
-  "state": "BUFFER_SCHEDULED",
-  "final": false,
+  "state": "LINKEDIN_CONFIRMED",
+  "final": true,
   "history": [
     {
       "state": "HANDOFF_COMMITTED",
@@ -10,12 +10,20 @@
       "state": "BUFFER_SCHEDULED",
       "at": "2026-11-17T12:38:38.915640+11:00",
       "buffer_post_id": "6afbb01edf36f4d8255eb95f"
+    },
+    {
+      "state": "LINKEDIN_CONFIRMED",
+      "at": "2026-11-17T16:27:32.006544+11:00",
+      "buffer_post_id": "6afbb01edf36f4d8255eb95f",
+      "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7528271029006159872"
     }
   ],
   "handoff_created_at": "2026-11-17T12:37:43+11:00",
   "handoff_commit": "ab41654dfecf3898bd0474fc4e82f6c2f6f78ce9",
   "pdf_sha256": "fbf594f31d608dfa091124499dc05704aa45f4a46bee878cfb6434a0f4a26fa6",
-  "updated_at": "2026-11-17T12:38:38.915640+11:00",
+  "updated_at": "2026-11-17T16:27:32.006544+11:00",
   "buffer_post_id": "6afbb01edf36f4d8255eb95f",
-  "due_at": "2026-11-17T12:41:00+11:00"
+  "due_at": "2026-11-17T12:41:00+11:00",
+  "sent_at": "2026-11-17T01:41:22.610Z",
+  "linkedin_url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:7528271029006159872"
 }
