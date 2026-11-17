@@ -4,5 +4,22 @@
   "material_filings_contract": {
     "schema3_accepted": false,
     "note": "Schema 3 (material-filings/1) handoffs are rejected (retried until the cutoff) while false. Set true ONLY after the 1:15 PM (Amendment A) and 1:58 PM (Amendment B) routine instructions are updated and verified. Schema 2 is unaffected."
+  },
+  "vitti_generator": {
+    "enabled": false,
+    "publish": false,
+    "rights_confirmed": false,
+    "note": "Automated report generator (tar_gen, workflow 'TAR Generate'). enabled=false: nothing runs on schedule. enabled=true, publish=false: SHADOW mode, reports are built and fully verified but never committed or posted. Publication to main (and so to Buffer/LinkedIn through the existing TAR Buffer Schedule workflow) needs enabled, publish, rights_confirmed AND the master switch above all true. rights_confirmed must only be set after the owner has confirmed the right to republish Vitti Capital Daily Mover material publicly.",
+    "drive_root_folder_id": "1F9nfvK_OVBwMih6y74D1zJ94EKbW3N3C",
+    "allowed_senders": [
+      "reports@vitti.capital"
+    ],
+    "dkim_domain": "vitti.capital",
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "max_attempts": 3,
+    "latest_start": "14:40",
+    "give_up_after": "14:30",
+    "no_package_alert_after": "13:00"
   }
 }

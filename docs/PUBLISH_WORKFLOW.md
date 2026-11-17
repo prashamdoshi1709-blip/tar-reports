@@ -40,3 +40,7 @@ Schema 3 (`material-filings/1`) lets a handoff carry material later filings that
 
 ## REV 8 early publication (from Mon 9 Nov 2026)
 No fixed 3:00 PM slot. As soon as publish.json is committed and every check passes (hashes, clean PDF, ASX newer-filing checks, public Pages URL check, duplicate protection), tools/buffer_schedule.py creates the Buffer post for now + about 3 minutes. Cutoff for creating a post: 3:15 PM Sydney. Exactly one TAR report per ASX trading day (Mon-Fri, excluding public holidays): any other real TAR post dated today blocks a different report. Identical existing post = success (no second post). Cron: every 5 min 11:00 AM-2:55 PM, every 10 min 3:00-5:50 PM (reconcile only). The 6 Nov 2026 MYX report was published manually and is never republished.
+
+## Automated generator (17 Nov 2026, disabled until activated)
+`tar_gen/` + workflow "TAR Generate" build the report from the Vitti Daily Mover package in Drive and hand a schema 4
+`publish.json` to this publisher (started by `workflow_run`). No second Buffer publisher exists. See `docs/VITTI_GENERATOR.md`.

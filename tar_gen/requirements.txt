@@ -1,0 +1,4 @@
+weasyprint==66.0
+anthropic==2.9.0
+google-auth==2.43.0
+requests==2.32.5

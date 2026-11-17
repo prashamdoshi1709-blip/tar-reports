@@ -1,0 +1,96 @@
+name: TAR Generate
+
+# Automated TAR report generator (tar_gen/). Reads the Vitti Daily Mover package that the existing Gmail -> Apps Script
+# import writes to Google Drive, has Claude write the report, renders the two-page PDF and cover, checks everything and
+# writes a schema 4 handoff. It NEVER calls Buffer: in publish mode it commits the report + publish.json to main and the
+# existing "TAR Buffer Schedule" workflow (started by workflow_run) re-verifies and publishes it.
+#
+# Off by default: config/auto-publish.json vitti_generator.enabled=false (scheduled runs exit at once).
+# enabled=true + publish=false = SHADOW: reports are built and verified, never committed or posted.
+# Publishing additionally needs vitti_generator.publish, vitti_generator.rights_confirmed and the master switch.
+#
+# Triggers: schedule every 10 min 10:00-14:50 Sydney on weekdays (retries until a report exists), repository_dispatch
+# "tar_package_ready" (optional, sent by apps-script/TarDispatch.gs the moment a package lands), and manual runs.
+on:
+  schedule:
+    - cron: '*/10 10-14 * * 1-5'
+      timezone: 'Australia/Sydney'
+  repository_dispatch:
+    types: [tar_package_ready]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'check-connections = Drive + Anthropic key test, nothing generated; shadow = build and verify today''s report, never publish; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
+        type: choice
+        options: [check-connections, shadow, offline-tests, run]
+        default: check-connections
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+
+concurrency:
+  group: tar-generate
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+      - name: Is there anything to do?
+        id: gate
+        run: |
+          D=$(TZ=Australia/Sydney date +%F)
+          echo "Sydney now: $(TZ=Australia/Sydney date -Iseconds)"
+          go=true
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            if ! python3 -c "import json,sys; sys.exit(0 if json.load(open('config/auto-publish.json')).get('vitti_generator',{}).get('enabled') is True else 1)"; then
+              echo "generator disabled (config vitti_generator.enabled=false)"; go=false
+            elif ls -d reports/$D-* >/dev/null 2>&1; then
+              echo "a report for $D already exists"; go=false
+            fi
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+      - name: Install tools
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 p7zip-full
+          python3 -m pip install -q -r tar_gen/requirements.txt
+      - name: Offline test suite
+        if: steps.gate.outputs.go == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'offline-tests'
+        run: python3 tools/test_tar_gen.py
+      - name: Generate
+        if: steps.gate.outputs.go == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'offline-tests')
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
+        run: |
+          case "$MODE_INPUT" in
+            check-connections) python3 -m tar_gen.run --check-connections ;;
+            shadow) python3 -m tar_gen.run --mode shadow --ignore-schedule ;;
+            *) python3 -m tar_gen.run ;;
+          esac
+      - name: Encrypted review copy (shadow mode)
+        if: always() && steps.gate.outputs.go == 'true' && hashFiles('generator-output/**') != ''
+        env:
+          PW: ${{ secrets.TAR_REVIEW_PASSWORD }}
+        run: |
+          # The repository is public, so artifacts are too: the review copy is only kept if it can be encrypted.
+          if [ -z "$PW" ]; then echo "TAR_REVIEW_PASSWORD not set: no review copy kept"; rm -rf generator-output; exit 0; fi
+          7z a -bso0 -p"$PW" -mhe=on tar-review.7z generator-output
+          rm -rf generator-output
+      - name: Upload encrypted review copy
+        if: always() && hashFiles('tar-review.7z') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: tar-review-${{ github.run_id }}
+          path: tar-review.7z
+          retention-days: 7

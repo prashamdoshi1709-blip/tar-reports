@@ -238,8 +238,10 @@ def main():
         return
     if MODE not in ("scheduled", "dryrun", "verify"):
         die(f"unknown MODE {MODE!r}")
-    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "push"):
-        die("scheduling a post is only allowed from the GitHub schedule or push event")
+    # workflow_run: started when the "TAR Generate" workflow finishes (its handoff commit is made with the workflow token,
+    # which does not raise a push event). It runs on main with exactly the same checks as push/schedule.
+    if MODE == "scheduled" and os.environ.get("GITHUB_EVENT_NAME") not in ("schedule", "push", "workflow_run"):
+        die("scheduling a post is only allowed from the GitHub schedule, push or workflow_run event")
     if MODE == "scheduled" and os.environ.get("GITHUB_REF") != "refs/heads/main":
         die("scheduling a post is only allowed from main")
 
