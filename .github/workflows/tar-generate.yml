@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check-connections = Drive + optional Gemini key test (synthetic prompt), nothing generated; shadow = build and verify today''s report, never publish; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
+        description: 'check-connections = Drive + optional Gemini key test (synthetic prompt), nothing generated; shadow = private test on the newest real package (even if already published), never publishes or commits; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
         type: choice
         options: [check-connections, shadow, offline-tests, run]
         default: check-connections
@@ -79,6 +79,9 @@ jobs:
         run: |
           case "$MODE_INPUT" in
             check-connections) python3 -m tar_gen.run --check-connections ;;
-            shadow) python3 -m tar_gen.run --mode shadow --ignore-schedule ;;
+            # Private test: newest package of the last 10 days, built even if already published; forced shadow mode,
+            # no notifications, output deleted. The normal "run" path below keeps every duplicate rule.
+            shadow) rc=0; python3 -m tar_gen.run --latest 10 --no-notify --out "$RUNNER_TEMP/tar-shadow" || rc=$?
+                    rm -rf "$RUNNER_TEMP/tar-shadow"; exit $rc ;;
             *) python3 -m tar_gen.run ;;
           esac

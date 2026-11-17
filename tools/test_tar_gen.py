@@ -599,6 +599,30 @@ def main():
         finally:
             RUN.ROOT, RUN.today_syd = saved_root, saved_today
 
+        print("== 11c. production keeps one report per day; only the private shadow button builds past it")
+        fake3 = tempfile.mkdtemp(dir=tmp)
+        shutil.copytree(os.path.join(ROOT, "config"), os.path.join(fake3, "config"))
+        c3 = json.load(open(os.path.join(fake3, "config", "auto-publish.json")))
+        c3["vitti_generator"]["enabled"] = True
+        json.dump(c3, open(os.path.join(fake3, "config", "auto-publish.json"), "w"))
+        os.makedirs(os.path.join(fake3, "reports", "2026-11-18-ABC"))
+        saved_root, saved_today = RUN.ROOT, RUN.today_syd
+        RUN.ROOT, RUN.today_syd = fake3, (lambda: D)
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc_prod = RUN.main(["--config", os.path.join(fake3, "config", "auto-publish.json"), "--ignore-schedule", "--no-notify",
+                                    "--out", os.path.join(tmp, "prod")])
+            record("production run on a day that already has a report: stops before reading Drive or building",
+                   rc_prod == 0 and "ALREADY HAVE A REPORT FOR 2026-11-18" in buf.getvalue() and not os.path.exists(os.path.join(tmp, "prod")))
+        finally:
+            RUN.ROOT, RUN.today_syd = saved_root, saved_today
+        wfg = open(os.path.join(ROOT, ".github", "workflows", "tar-generate.yml")).read()
+        record("the shadow button runs the private --latest test (no notifications, output deleted)",
+               'shadow) rc=0; python3 -m tar_gen.run --latest 10 --no-notify --out "$RUNNER_TEMP/tar-shadow"' in wfg
+               and 'rm -rf "$RUNNER_TEMP/tar-shadow"; exit $rc' in wfg)
+        record("the scheduled production path is unchanged", "*) python3 -m tar_gen.run ;;" in wfg)
+
         print("== 12. Drive reader against a mock Drive API (no Google account needed)")
         from tar_gen.source import DriveSource
         mdrive = MockDrive(root, D)
