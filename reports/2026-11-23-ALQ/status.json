@@ -1,6 +1,6 @@
 {
-  "state": "FAILED",
-  "final": true,
+  "state": "HANDOFF_COMMITTED",
+  "final": false,
   "history": [
     {
       "state": "HANDOFF_COMMITTED",
@@ -10,11 +10,15 @@
       "state": "FAILED",
       "at": "2026-11-23T12:42:56.155047+11:00",
       "reason": "Buffer API HTTP 401 (401 means the API key is invalid or revoked)"
+    },
+    {
+      "state": "HANDOFF_COMMITTED",
+      "at": "2026-11-23T13:42:18.495777+11:00",
+      "reason": "RESET by owner request: the FAILED state was a Buffer HTTP 401 before any post was created; BUFFER_API_KEY has been replaced and verified. Same report, same PDF sha256; no new report generated."
     }
   ],
   "handoff_created_at": "2026-11-23T12:42:03+11:00",
   "handoff_commit": "5d018434d03e8c8e23d12c94a77f9af2f839c101",
   "pdf_sha256": "620a9725bba59eaf05600c63863ea3b7780aea3ad4ac8acd4a17e03f2a9efad9",
-  "updated_at": "2026-11-23T12:42:56.155047+11:00",
-  "reason": "Buffer API HTTP 401 (401 means the API key is invalid or revoked)"
+  "updated_at": "2026-11-23T13:42:18.495777+11:00"
 }
