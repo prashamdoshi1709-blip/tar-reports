@@ -1,0 +1,44 @@
+{
+ "schema": 4,
+ "mode": "LIVE",
+ "ticker": "ALQ",
+ "company_name": "ALS Limited",
+ "report_date": "23 November 2026",
+ "report_date_iso": "2026-11-23",
+ "package_id": "2026-11-23_1046_1a205a7ea74aec8a_a1",
+ "handoff_created_at": "2026-11-23T12:42:03+11:00",
+ "pdf_sha256": "620a9725bba59eaf05600c63863ea3b7780aea3ad4ac8acd4a17e03f2a9efad9",
+ "pdf_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-23-ALQ/TAR_ALQ_23Nov2026.pdf",
+ "cover_url": "https://prashamdoshi1709-blip.github.io/tar-reports/reports/2026-11-23-ALQ/TAR_ALQ_23Nov2026_cover.png",
+ "title": "ALS: Life Sciences Stays Soft",
+ "caption": "The Announcement Room | ALS Limited (ALQ)\n\nAccording to the Vitti Capital Daily Mover dated 23 November 2026, ALS Limited shares fell 12.0% in morning trade to $16.99.\n\nVitti points to three possible drivers of the move:\n• H1 Life Sciences organic growth of 1.8% confirms the softer FY27 trajectory\n• EBITDA cash conversion fell to 82.4% from 88.0% on bigger working capital\n• Record Commodities growth (+24.5%) couldn't offset Life Sciences woes\n\nKey points:\n• FY27 life SCI growth GUID.: ~3%\n• H1 life SCI organic growth: 1.8%\n• EBITDA cash conversion: 82.4%\n• H2 Minerals growth expected to moderate against tougher FY26 H2 comparative\n• Minerals margin targeted to improve 20-30bps in H2 FY27 above H1 margin\n\nLooking ahead, Vitti flags three key risks: Life Sciences recovery, cash conversion gap and minerals comp cycling.\n\nIn this two-page investor report, we look at:\n• What may have driven the move\n• What changes now\n• How we got here\n• Key risks and the Vitti view\n\nASX: ALQ | 23 November 2026\n\nGeneral information only. Not financial advice.\n\n#ASX #ALQ #ALS #EquityResearch #AustralianStocks",
+ "vitti_source": {
+  "basis": "VITTI_DAILY_MOVER",
+  "email_message_id": "1a205a7ea74aec8a",
+  "pdf_name": "ALQ-2026-11-23-draft.pdf",
+  "pdf_sha256": "7430b82cbe97bccf4ad537fed81f23f40f3960e760b5cc06de578877bd377cf3",
+  "independently_verified": false,
+  "rfc822_message_id": "<010601a205a7e712-b2a648b7-925f-4161-8c08-c3adb75aa3f4-000000@ap-northeast-1.amazonses.com>",
+  "drive_package_folder_id": "1V54w5oufsdii97XNxS5CvZRNNV6yaJgY",
+  "supporting_announcements": []
+ },
+ "claude_verification": {
+  "vitti_sender_verified": true,
+  "vitti_pdf_readable": true,
+  "company_date_match": true,
+  "final_pdf_valid": true,
+  "visual_check_done": true,
+  "no_duplicate": true,
+  "master_switch_enabled": true
+ },
+ "generator": {
+  "name": "tar_gen",
+  "version": "1.1.0",
+  "writer_mode": "B-template",
+  "model": "template",
+  "fallback_reason": null,
+  "attempts": 1,
+  "run_id": "45095979630",
+  "cover_sha256": "f7e3507f989e0517ba1c545dd2f7b3733a082da44567aa3e8395a347d6ffb09d"
+ }
+}
