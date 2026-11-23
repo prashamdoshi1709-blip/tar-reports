@@ -99,7 +99,8 @@ def synthetic_daily_mover(path, tk="TMZ", company="Test Minerals Limited", d=D, 
 
 
 def make_package(root, tk="TMZ", d=D, sender="reports@vitti.capital", dkim=True, subject_tk=None, name_tk=None,
-                 title_tk=None, recv=None, mode="VITTI", drop_risks=False):
+                 title_tk=None, recv=None, mode="VITTI", drop_risks=False, status="AWAITING_VERIFICATION", shape=None,
+                 dm_extra=None):
     pid = f"{d.isoformat()}_1046_1a1e000000000001_a1"
     p = os.path.join(root, pid)
     os.makedirs(p)
@@ -111,8 +112,11 @@ def make_package(root, tk="TMZ", d=D, sender="reports@vitti.capital", dkim=True,
            "email": {"sender_email": sender, "subject": f"Daily Mover draft: {subject_tk or tk} +12.40% ({d.day} {d.strftime('%b %Y')})",
                      "received_at": recv or f"{d.isoformat()}T10:46:48+11:00", "gmail_message_id": "1a1e000000000001",
                      "rfc822_message_id": "<synthetic@test>", "authentication_results": auth},
-           "daily_mover": {"status": "found", "name": f"{name_tk or tk}-{d.isoformat()}-draft.pdf", "sha256": sha},
-           "drive": {"package_folder_id": "SYNTHETIC"}, "files": []}
+           "daily_mover": dict({"status": "found", "name": f"{name_tk or tk}-{d.isoformat()}-draft.pdf", "sha256": sha,
+                                 "drive_file_id": "SYNTHETIC_DM", "saved": True, "size_verified": True}, **(dm_extra or {})),
+           "status": status, "drive": {"package_folder_id": "SYNTHETIC"}, "files": []}
+    if shape:
+        idx["import_shape"] = shape
     json.dump(idx, open(os.path.join(p, "SOURCE_INDEX.json"), "w"))
     return p
 
@@ -348,8 +352,11 @@ def main():
         print("== 5. safety gates (nothing can publish by default)")
         cfg, g = json.load(open(os.path.join(ROOT, "config", "auto-publish.json"))), None
         g = cfg["vitti_generator"]
-        record("repository config: generator disabled, publish off, rights not confirmed",
-               g["enabled"] is False and g["publish"] is False and g["rights_confirmed"] is False)
+        # The owner switched publication on (rights confirmed in writing). The config must stay consistent: publish never
+        # without rights, Gemini stays off, and the template writer (no AI) is used.
+        record("repository config: publish only with rights confirmed; Gemini off; template writer",
+               (g["publish"] is not True or (g["rights_confirmed"] is True and g["enabled"] is True))
+               and g.get("gemini_data_use_authorised") is not True and g.get("writer_mode") == "template")
         os.environ.update(GITHUB_ACTIONS="true", GITHUB_REF="refs/heads/main")
         ok, why = RUN.publish_allowed(dict(cfg, enabled=True), dict(g, enabled=True, publish=True, rights_confirmed=False))
         record("publish blocked while republication rights are unconfirmed", not ok and any("rights" in w for w in why))
@@ -719,7 +726,9 @@ def _historical_index(p, dm, tk, d):
                "email": {"sender_email": "reports@vitti.capital", "subject": f"Daily Mover draft: {tk} +0.00% ({d.day} {d.strftime('%b %Y')})",
                          "received_at": f"{d.isoformat()}T10:46:00+11:00", "gmail_message_id": "historical-" + tk,
                          "authentication_results": "historical replay; dkim=pass header.i=@vitti.capital"},
-               "daily_mover": {"status": "found", "name": f"{tk}-{d.isoformat()}-draft.pdf", "sha256": sha}, "files": []},
+               "status": "AWAITING_VERIFICATION",
+               "daily_mover": {"status": "found", "name": f"{tk}-{d.isoformat()}-draft.pdf", "sha256": sha,
+                               "drive_file_id": "HISTORICAL", "saved": True, "size_verified": True}, "files": []},
               open(os.path.join(p, "SOURCE_INDEX.json"), "w"))
 
 
