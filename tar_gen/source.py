@@ -22,6 +22,30 @@ FOLDER_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})_\d{4}_[0-9a-f]{8,}_a\d+$")
 MAX_SUPPORT_BYTES = 15 * 1024 * 1024
 MAX_SUPPORT_FILES = 6
 
+# Package states written by the Apps Script import. A package is used only when the import has FINISHED with it.
+READY_STATES = {"AWAITING_VERIFICATION", "VERIFIED", "READY"}
+# NOT_READY is accepted only for this known benign shape: Vitti sent PDF links instead of a ZIP, so there are no
+# supporting announcements, but the Daily Mover itself was saved and size-verified.
+NOT_READY_OK_SHAPES = {"PDF_LINKS_NO_ZIP"}
+
+
+def package_complete(idx):
+    """(True, "") when the import finished writing this package and its Daily Mover; else (False, reason code).
+    PROCESSING / unknown states, a missing or unverified Daily Mover, or a NOT_READY package for any other reason
+    are never used: an incomplete Drive package can never reach publication. Mirrored in apps-script/TarDispatch.gs."""
+    st = str(idx.get("status") or "").upper()
+    dm = idx.get("daily_mover") or {}
+    if st == "NOT_READY":
+        if idx.get("import_shape") not in NOT_READY_OK_SHAPES:
+            return False, "PACKAGE_NOT_READY"
+    elif st not in READY_STATES:
+        return False, "PACKAGE_INCOMPLETE"
+    if dm.get("status") != "found" or not dm.get("drive_file_id"):
+        return False, "PACKAGE_NO_DAILY_MOVER"
+    if dm.get("saved") is False or dm.get("size_verified") is False:
+        return False, "PACKAGE_DAILY_MOVER_UNVERIFIED"
+    return True, ""
+
 
 class Package:
     def __init__(self, package_id, index, daily_mover_path, today_docs, folder_id=None, created=None):
@@ -50,6 +74,8 @@ class LocalSource:
                 continue
             idx = json.load(open(ip, encoding="utf-8"))
             if not str(idx.get("package_id", "")).startswith(d.isoformat()):
+                continue
+            if not package_complete(idx)[0]:
                 continue
             today = [(os.path.basename(f), f) for f in sorted(glob.glob(os.path.join(p, "today", "*.pdf")))]
             out.append(Package(idx["package_id"], idx, os.path.join(p, "daily_mover.pdf"), today[:MAX_SUPPORT_FILES],
@@ -143,9 +169,9 @@ class DriveSource:
                 idx = json.load(open(ip, encoding="utf-8"))
             except ValueError:
                 continue
-            dm = idx.get("daily_mover") or {}
-            if dm.get("status") != "found" or not dm.get("drive_file_id"):
-                continue
+            if not package_complete(idx)[0]:
+                continue  # import still running or package unusable; a later run looks again
+            dm = idx["daily_mover"]
             dmp = self._download(dm["drive_file_id"], os.path.join(pdir, "daily_mover.pdf"), max_bytes=5 * 1024 * 1024)
             today = []
             for fe in idx.get("files") or []:

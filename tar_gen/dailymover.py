@@ -80,6 +80,13 @@ MONTHS3 = {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct",
            "wednesday", "thursday", "friday", "australia", "australian", "english"}
 
 
+# Vitti's KPI labels abbreviate to fit a tile ("FY27 LIFE SCI GROWTH GUID."). Expanded before casing so the report and
+# caption read as plain English. Expansions only: no figure, period or unit is ever touched.
+# A tile label must stay within 30 characters (checks.py), so "LIFE SCI" becomes the proper-case "Life Sci.".
+LABEL_PHRASES = [(r"\bLIFE SCI\b\.?", "Life Sci."), (r"\bLIFE SCIENCES\b", "Life Sciences"), (r"\bGUID(?:ANCE)?\b\.?", "guidance"),
+                 (r"\bYOY\b", "year on year"), (r"\bQOQ\b", "quarter on quarter")]
+
+
 def sentence_case(s):
     """Vitti's labels are upper case. Ordinary dictionary words become lower case, acronyms (CLS, HPC, MPI, EBITDA,
     FY26) stay upper case, month abbreviations become Sep/Oct. Mixed-case text is returned as written."""
@@ -87,6 +94,9 @@ def sentence_case(s):
     s = s.strip()
     if not s.isupper():
         return s[:1].upper() + s[1:]
+    keep = []
+    for pat, rep in LABEL_PHRASES:  # expansions are written as they must read; protected from the casing below
+        s = re.sub(pat, lambda m, rep=rep: (keep.append(rep), f"\x01{len(keep) - 1}\x01")[1], s)
 
     def fix(m):
         w = m.group(0)
@@ -99,6 +109,7 @@ def sentence_case(s):
             return lw if lw in FALLBACK_COMMON else w  # AI, HPC, CLS stay; of, in, to, new, net go lower case
         return lw if (len(w) > 5 or known(lw)) and lw not in ("ebitda", "npat", "cfius", "accc", "firb") else w
     out = re.sub(r"[A-Za-z][A-Za-z']*", fix, s)
+    out = re.sub(r"\x01(\d+)\x01", lambda m: keep[int(m.group(1))], out)
     return out[:1].upper() + out[1:]
 
 

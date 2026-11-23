@@ -48,4 +48,18 @@ for name, transient, past, exp_code, exp_final in [("transient before cutoff", T
     d = tempfile.mkdtemp(); bs.set_status(d, "HANDOFF_COMMITTED"); bs.CTX.update(folder=d, past_cutoff=past)
     code = run(lambda: bs.die("x", transient=transient)); s = bs.load_status(d)
     check(f"die: {name}", code == exp_code and bool(s["final"]) == exp_final and (s["state"] == "FAILED") == exp_final)
+
+# 5 expired / revoked Buffer key (401/403) before the cutoff: RED alert but NOT final, so replacing the key recovers the
+#   day automatically; once scheduled, the block is cleared. After the cutoff it is final as before.
+d = tempfile.mkdtemp(); bs.set_status(d, "HANDOFF_COMMITTED"); bs.CTX.update(folder=d, past_cutoff=False)
+code = run(lambda: bs.die("Buffer API HTTP 401", credential=True)); s = bs.load_status(d)
+check("die: expired key before cutoff = red, not final, blocked_reason recorded",
+      code == 1 and not s["final"] and s["state"] == "HANDOFF_COMMITTED" and s.get("blocked_reason") == "Buffer API HTTP 401")
+n = len(s["history"]); run(lambda: bs.die("Buffer API HTTP 401", credential=True))
+check("die: repeated identical credential failure does not grow the history", len(bs.load_status(d)["history"]) == n)
+bs.set_status(d, "BUFFER_SCHEDULED", buffer_post_id="p9"); s = bs.load_status(d)
+check("credential block cleared once the post is scheduled", "blocked_reason" not in s and "reason" not in s)
+d2 = tempfile.mkdtemp(); bs.set_status(d2, "HANDOFF_COMMITTED"); bs.CTX.update(folder=d2, past_cutoff=True)
+code = run(lambda: bs.die("Buffer API HTTP 401", credential=True)); s = bs.load_status(d2)
+check("die: expired key after the cutoff = FAILED final (cutoff never bypassed)", code == 1 and s["final"] and s["state"] == "FAILED")
 sys.exit(1 if fails else 0)

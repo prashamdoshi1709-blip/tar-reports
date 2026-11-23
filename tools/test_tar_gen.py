@@ -8,7 +8,7 @@ format (same PDF metadata and letter-spaced labels), so no Vitti content is stor
     python3 tools/test_tar_gen.py --historical DIR        # also replay real packages kept OUTSIDE the repo:
         DIR/<name>/daily_mover.pdf [+ SOURCE_INDEX.json] [+ reply.json = an AI reply to run the full pipeline]
 """
-import contextlib, copy, glob, hashlib, io, json, os, shutil, subprocess, sys, tempfile
+import contextlib, copy, glob, hashlib, io, re, json, os, shutil, subprocess, sys, tempfile
 from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,7 +99,8 @@ def synthetic_daily_mover(path, tk="TMZ", company="Test Minerals Limited", d=D, 
 
 
 def make_package(root, tk="TMZ", d=D, sender="reports@vitti.capital", dkim=True, subject_tk=None, name_tk=None,
-                 title_tk=None, recv=None, mode="VITTI", drop_risks=False):
+                 title_tk=None, recv=None, mode="VITTI", drop_risks=False, status="AWAITING_VERIFICATION", shape=None,
+                 dm_extra=None):
     pid = f"{d.isoformat()}_1046_1a1e000000000001_a1"
     p = os.path.join(root, pid)
     os.makedirs(p)
@@ -111,8 +112,11 @@ def make_package(root, tk="TMZ", d=D, sender="reports@vitti.capital", dkim=True,
            "email": {"sender_email": sender, "subject": f"Daily Mover draft: {subject_tk or tk} +12.40% ({d.day} {d.strftime('%b %Y')})",
                      "received_at": recv or f"{d.isoformat()}T10:46:48+11:00", "gmail_message_id": "1a1e000000000001",
                      "rfc822_message_id": "<synthetic@test>", "authentication_results": auth},
-           "daily_mover": {"status": "found", "name": f"{name_tk or tk}-{d.isoformat()}-draft.pdf", "sha256": sha},
-           "drive": {"package_folder_id": "SYNTHETIC"}, "files": []}
+           "daily_mover": dict({"status": "found", "name": f"{name_tk or tk}-{d.isoformat()}-draft.pdf", "sha256": sha,
+                                 "drive_file_id": "SYNTHETIC_DM", "saved": True, "size_verified": True}, **(dm_extra or {})),
+           "status": status, "drive": {"package_folder_id": "SYNTHETIC"}, "files": []}
+    if shape:
+        idx["import_shape"] = shape
     json.dump(idx, open(os.path.join(p, "SOURCE_INDEX.json"), "w"))
     return p
 
@@ -348,8 +352,11 @@ def main():
         print("== 5. safety gates (nothing can publish by default)")
         cfg, g = json.load(open(os.path.join(ROOT, "config", "auto-publish.json"))), None
         g = cfg["vitti_generator"]
-        record("repository config: generator disabled, publish off, rights not confirmed",
-               g["enabled"] is False and g["publish"] is False and g["rights_confirmed"] is False)
+        # The owner switched publication on (rights confirmed in writing). The config must stay consistent: publish never
+        # without rights, Gemini stays off, and the template writer (no AI) is used.
+        record("repository config: publish only with rights confirmed; Gemini off; template writer",
+               (g["publish"] is not True or (g["rights_confirmed"] is True and g["enabled"] is True))
+               and g.get("gemini_data_use_authorised") is not True and g.get("writer_mode") == "template")
         os.environ.update(GITHUB_ACTIONS="true", GITHUB_REF="refs/heads/main")
         ok, why = RUN.publish_allowed(dict(cfg, enabled=True), dict(g, enabled=True, publish=True, rights_confirmed=False))
         record("publish blocked while republication rights are unconfirmed", not ok and any("rights" in w for w in why))
@@ -623,6 +630,95 @@ def main():
                and 'rm -rf "$RUNNER_TEMP/tar-shadow"; exit $rc' in wfg)
         record("the scheduled production path is unchanged", "*) python3 -m tar_gen.run ;;" in wfg)
 
+        print("== 11d. missed days are red and alerted once; incomplete packages never start; watchdog")
+        from datetime import datetime as _dt
+        from tar_gen.source import package_complete
+        from tar_gen.dailymover import sentence_case as sentence_case_x
+
+        class _Clock(_dt):
+            at = None
+
+            @classmethod
+            def now(cls, tz=None):
+                return cls.at
+        saved = (RUN.ROOT, RUN.today_syd, RUN.datetime)
+        fake4 = tempfile.mkdtemp(dir=tmp)
+        shutil.copytree(os.path.join(ROOT, "config"), os.path.join(fake4, "config"))
+        c4 = json.load(open(os.path.join(fake4, "config", "auto-publish.json")))
+        c4["enabled"] = True
+        c4["vitti_generator"].update(enabled=True, publish=True, rights_confirmed=True)
+        cfg4 = os.path.join(fake4, "config", "auto-publish.json")
+        json.dump(c4, open(cfg4, "w"))
+        RUN.ROOT, RUN.today_syd, RUN.datetime = fake4, (lambda: D), _Clock
+
+        def at(h, m):
+            _Clock.at = _dt(D.year, D.month, D.day, h, m, tzinfo=BS.SYD)
+
+        def go(*args):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = RUN.main(["--config", cfg4, "--no-notify", *args])
+            return rc, buf.getvalue()
+
+        def status(state, **kw):
+            shutil.rmtree(os.path.join(fake4, "reports"), ignore_errors=True)
+            if state is not False:
+                os.makedirs(os.path.join(fake4, "reports", "2026-11-18-ABC"))
+                if state:
+                    json.dump(dict({"state": state, "final": state in ("FAILED", "LINKEDIN_CONFIRMED"), "history": []}, **kw),
+                              open(os.path.join(fake4, "reports", "2026-11-18-ABC", "status.json"), "w"))
+        try:
+            status(False); at(14, 55)
+            rc, out = go()
+            record("trading day, no report, past the start deadline: RED with MISSED_START_WINDOW (never a green skip)",
+                   rc == 1 and "OUTCOME: FAIL MISSED_START_WINDOW" in out)
+            status(None); at(14, 55)
+            rc, out = go()
+            record("a report already exists past the deadline: green SKIP REPORT_EXISTS, nothing rebuilt", rc == 0 and "OUTCOME: SKIP REPORT_EXISTS" in out)
+            at(23, 14)
+            rc, out = go("--date", "2026-11-21")
+            record("weekend: green SKIP NOT_TRADING_DAY", rc == 0 and "NOT_TRADING_DAY" in out)
+            cases = [((15, 0), False, None, 0, "TOO_EARLY"),
+                     ((15, 25), False, None, 1, "FAIL MISSED_START_WINDOW"),
+                     ((15, 25), "LINKEDIN_CONFIRMED", {"linkedin_url": "https://www.linkedin.com/feed/update/urn:li:share:1"}, 0, "PUBLISHED_OK"),
+                     ((15, 25), "BUFFER_SCHEDULED", {"buffer_post_id": "x"}, 0, "AWAITING_CONFIRMATION"),
+                     ((17, 20), "BUFFER_SCHEDULED", {"buffer_post_id": "x"}, 1, "FAIL LINKEDIN_NOT_CONFIRMED"),
+                     ((15, 25), "FAILED", {"reason": "x"}, 1, "FAIL PUBLISH_FAILED"),
+                     ((15, 25), "HANDOFF_COMMITTED", {"blocked_reason": "Buffer API HTTP 401"}, 1, "FAIL PUBLISH_BLOCKED_CREDENTIALS"),
+                     ((15, 25), "HANDOFF_COMMITTED", {}, 1, "FAIL NOT_HANDED_TO_BUFFER")]
+            for (h, m), st, kw, want_rc, want in cases:
+                status(st, **(kw or {})); at(h, m)
+                rc, out = go("--watchdog")
+                record(f"watchdog {h:02d}:{m:02d} state={st}: exit {want_rc}, {want}", rc == want_rc and want in out)
+        finally:
+            RUN.ROOT, RUN.today_syd, RUN.datetime = saved
+        base = {"status": "AWAITING_VERIFICATION", "daily_mover": {"status": "found", "drive_file_id": "x", "saved": True, "size_verified": True}}
+        record("package complete: AWAITING_VERIFICATION with a verified Daily Mover", package_complete(base)[0])
+        record("package complete: NOT_READY only because Vitti sent PDF links instead of a ZIP",
+               package_complete(dict(base, status="NOT_READY", import_shape="PDF_LINKS_NO_ZIP"))[0])
+        record("incomplete: PROCESSING (import still writing)", package_complete(dict(base, status="PROCESSING")) == (False, "PACKAGE_INCOMPLETE"))
+        record("incomplete: NOT_READY for any other reason", package_complete(dict(base, status="NOT_READY")) == (False, "PACKAGE_NOT_READY"))
+        record("incomplete: unknown or missing status", not package_complete(dict(base, status="")) [0])
+        record("incomplete: Daily Mover not size-verified",
+               package_complete(dict(base, daily_mover=dict(base["daily_mover"], size_verified=False))) == (False, "PACKAGE_DAILY_MOVER_UNVERIFIED"))
+        record("incomplete: Daily Mover missing", package_complete(dict(base, daily_mover={"status": "missing"})) == (False, "PACKAGE_NO_DAILY_MOVER"))
+        rproc = tempfile.mkdtemp(dir=tmp)
+        make_package(rproc, status="PROCESSING")
+        record("a PROCESSING package is invisible to the generator (cannot start publication)", LocalSource(rproc).packages_for(D) == [])
+        gs = open(os.path.join(ROOT, "apps-script", "TarDispatch.gs")).read()
+        from tar_gen import source as _S
+        record("Apps Script dispatcher applies the same completeness rule",
+               all(f"'{x}'" in gs for x in _S.READY_STATES | _S.NOT_READY_OK_SHAPES) and "tarPackageComplete_" in gs
+               and "/actions/workflows/' + TAR_WORKFLOW + '/dispatches" in gs and "GITHUB_DISPATCH_TOKEN" in gs
+               and not re.search(r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_", gs))
+        wf = open(os.path.join(ROOT, ".github", "workflows", "tar-generate.yml")).read()
+        record("workflow: watchdog mode wired; backup crons off the :00 minute",
+               "watchdog) python3 -m tar_gen.run --watchdog ;;" in wf and "'7,17,27,37,47,57 10-14 * * 1-5'" in wf)
+        record("Vitti's abbreviated labels read as plain English",
+               sentence_case_x("FY27 LIFE SCI GROWTH GUID.") == "FY27 Life Sci. growth guidance"
+               and sentence_case_x("H1 LIFE SCI ORGANIC GROWTH") == "H1 Life Sci. organic growth"
+               and all(len(sentence_case_x(x)) <= 30 for x in ("FY27 LIFE SCI GROWTH GUID.", "H1 LIFE SCI ORGANIC GROWTH")))
+
         print("== 12. Drive reader against a mock Drive API (no Google account needed)")
         from tar_gen.source import DriveSource
         mdrive = MockDrive(root, D)
@@ -666,8 +762,10 @@ def main():
                 meta = subprocess.run(["pdfinfo", dm], capture_output=True, text=True).stdout
                 tk = meta.split("Title:")[1].split()[0]
                 d = date.fromisoformat(name.split("-", 1)[1])
-                if not os.path.isfile(os.path.join(p, "SOURCE_INDEX.json")):
-                    _historical_index(p, dm, tk, d)
+                ip = os.path.join(p, "SOURCE_INDEX.json")
+                old = json.load(open(ip)) if os.path.isfile(ip) else None
+                if old is None or ("status" not in old and str((old.get("email") or {}).get("gmail_message_id", "")).startswith("historical-")):
+                    _historical_index(p, dm, tk, d)  # (re)build a replay index; real Apps Script indexes are kept as is
                 hp = LocalSource(p).packages_for(d)[0]
                 try:
                     hid = verify_package(hp, d, GEN)
@@ -719,7 +817,9 @@ def _historical_index(p, dm, tk, d):
                "email": {"sender_email": "reports@vitti.capital", "subject": f"Daily Mover draft: {tk} +0.00% ({d.day} {d.strftime('%b %Y')})",
                          "received_at": f"{d.isoformat()}T10:46:00+11:00", "gmail_message_id": "historical-" + tk,
                          "authentication_results": "historical replay; dkim=pass header.i=@vitti.capital"},
-               "daily_mover": {"status": "found", "name": f"{tk}-{d.isoformat()}-draft.pdf", "sha256": sha}, "files": []},
+               "status": "AWAITING_VERIFICATION",
+               "daily_mover": {"status": "found", "name": f"{tk}-{d.isoformat()}-draft.pdf", "sha256": sha,
+                               "drive_file_id": "HISTORICAL", "saved": True, "size_verified": True}, "files": []},
               open(os.path.join(p, "SOURCE_INDEX.json"), "w"))
 
 

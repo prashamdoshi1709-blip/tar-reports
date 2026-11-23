@@ -3,8 +3,8 @@
 The repository is public, so notifications carry only status, reason codes, ticker, date and hashes: never report
 text, captions or Vitti content. Uses the workflow's own GITHUB_TOKEN (permission issues: write); no extra secret.
 
-  failure   opens "TAR generator: no report for <date>" (label tar-generator). While that issue is open, later runs
-            for the same date do not retry (no repeated AI spend, no spam). Closing the issue allows a retry.
+  failure   opens "TAR generator: no report for <date>" (label tar-generator): ONE alert per day. While that issue is
+            open, later runs for the same date neither retry nor notify again. Closing the issue allows a retry.
   success   one comment per day on the rolling issue "TAR generator: daily log", so every run leaves a trace.
 """
 import json, os, urllib.request, urllib.error
@@ -53,8 +53,9 @@ def notify_failure(d, code, msg, run_url):
     t = failure_title(d)
     i = _find(t)
     if i and i["state"] == "open":
-        _req("POST", f"/issues/{i['number']}/comments", {"body": body})
-    elif i:
+        print("ALERT already open for this date: no second notification (one alert per day)")
+        return
+    elif i:  # the owner closed it to allow a retry, and the retry failed too: that is a new, deliberate alert
         _req("PATCH", f"/issues/{i['number']}", {"state": "open"})
         _req("POST", f"/issues/{i['number']}/comments", {"body": body})
     else:

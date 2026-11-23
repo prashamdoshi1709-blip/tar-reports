@@ -1,7 +1,24 @@
 # TAR automated generator (Vitti Daily Mover to LinkedIn)
 
-Status: built and tested offline. **Disabled** (`config/auto-publish.json` `vitti_generator.enabled=false`). Nothing runs on
-schedule and nothing can publish until the switches below are turned on.
+Status: LIVE since 23 Nov 2026 (`enabled`, `publish`, `rights_confirmed` true; template writer, no AI).
+
+## Reliability (REV 2, 23 Nov 2026)
+
+What broke on 18-20 Nov: GitHub's cron fired about once a day on this repository, after the 2:40 PM start deadline, so
+every day was skipped and the runs showed green. On 23 Nov the Buffer API key had also been revoked (HTTP 401), which
+the publisher treated as a final failure for the day.
+
+| Problem | Fix |
+|---|---|
+| GitHub schedule unreliable | PRIMARY trigger is `apps-script/TarDispatch.gs` (Google's timer, every 5 min): starts mode `run` as soon as today's package is complete and main has no report; repeats every 10 min (max 8 a day). GitHub cron stays as backup, off the :00 minute |
+| Incomplete package | `source.package_complete()` (mirrored in the Apps Script): only AWAITING_VERIFICATION/VERIFIED/READY, or NOT_READY solely because Vitti sent PDF links instead of a ZIP; the Daily Mover must be saved and size-verified. PROCESSING or unknown never starts anything |
+| Duplicates from repeated triggers | one report per day (report folder on main), Vitti email/hash used once, workflow concurrency, Buffer read before every post and one post per day |
+| Green skips hid missed days | every run prints `OUTCOME: PUBLISHED_HANDOFF / SHADOW_OK / SKIP / RETRY / FAIL <code>`; a trading day with no report after the start deadline is `FAIL MISSED_START_WINDOW` (red) |
+| Missed post not noticed | mode `watchdog` (dispatched 3:20-5:40 PM by the Apps Script, backup cron 3:23 PM and 5:13 PM): red + alert issue if the day has no confirmed LinkedIn post (`MISSED_START_WINDOW`, `NOT_HANDED_TO_BUFFER`, `PUBLISH_BLOCKED_CREDENTIALS`, `PUBLISH_FAILED`, `LINKEDIN_NOT_CONFIRMED`); its completion also lets the publisher reconcile Buffer |
+| Alert spam | one alert issue per day ("TAR generator: no report for <date>"); while it is open, later runs neither retry nor notify |
+| Expired Buffer key | HTTP 401/403 before the cutoff: run red, `status.json` keeps `blocked_reason` but is NOT final, so the next run after the secret is replaced publishes automatically. After 3:15 PM it is final (the cutoff is never bypassed). An expired dispatcher token: the Apps Script emails the owner once a day |
+
+Deadlines unchanged: generator start by 2:40 PM, publisher cutoff 3:15 PM Sydney.
 
 ## Flow
 

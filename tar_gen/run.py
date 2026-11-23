@@ -45,7 +45,22 @@ REASONS = {
     "DUPLICATE": "this Vitti email was already used", "INSUFFICIENT_SOURCE": "the Daily Mover lacks a section a report needs",
     "CHECKS_FAILED": "the report failed the content checks", "PDF_NOT_CLEAN": "the PDF failed verify_clean_pdf.py",
     "PUBLISHER_REJECTED": "the existing publisher's checks rejected the handoff",
+    "MISSED_START_WINDOW": "no run reached the generator before the start deadline (GitHub schedule/dispatch too late)",
+    "NOT_HANDED_TO_BUFFER": "a report exists but the publisher had not scheduled it by the cutoff",
+    "PUBLISH_FAILED": "the publisher recorded a final failure for the day's report",
+    "LINKEDIN_NOT_CONFIRMED": "Buffer has not confirmed a LinkedIn post for the day's report",
+    "PUBLISH_BLOCKED_CREDENTIALS": "the Buffer API key is missing, expired or revoked",
 }
+
+
+def outcome(kind, code, detail=""):
+    """One machine-readable line per run: PUBLISHED_HANDOFF / SHADOW_OK / SKIP / RETRY / FAIL plus a reason code."""
+    line = f"OUTCOME: {kind} {code}" + (f" ({detail})" if detail else "")
+    log(line)
+    summary(f"**{line}**")
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out:
+        open(out, "a").write(f"outcome={kind}\ncode={code}\n")
 
 
 def safe(e):
@@ -184,12 +199,62 @@ def write_report(ident, pkg, g, out_dir, fixture=None, log=print, verbose=True):
     return build(ident, w, out_dir, max_attempts=attempts, log=log, verbose=verbose), w.mode, "template", fallback
 
 
+def watchdog(cfg, g, d, now, notify_on):
+    """Missed-publication detector. Reads only the repository (reports/<date>-*/status.json written by the publisher).
+    Exit 1 + one alert issue per day when a trading day did not end with a post; exit 0 otherwise."""
+    if not is_trading_day(d):
+        outcome("SKIP", "NOT_TRADING_DAY")
+        return 0
+    if not (cfg.get("enabled") is True and g.get("enabled") is True and g.get("publish") is True):
+        outcome("SKIP", "PUBLISHING_OFF")
+        return 0
+    if now.time() < hhmm(g.get("watchdog_after", "15:20")):
+        outcome("SKIP", "TOO_EARLY", f"watchdog acts after {g.get('watchdog_after', '15:20')} Sydney")
+        return 0
+    folders = existing_report(d)
+    st = {}
+    for f in folders:
+        p = os.path.join(f, "status.json")
+        if os.path.isfile(p):
+            try:
+                st = json.load(open(p, encoding="utf-8"))
+            except ValueError:
+                st = {}
+    state = st.get("state")
+    if state == "LINKEDIN_CONFIRMED":
+        outcome("SKIP", "PUBLISHED_OK", st.get("linkedin_url") or "")
+        return 0
+    if not folders:
+        code = "MISSED_START_WINDOW"
+    elif st.get("blocked_reason"):
+        code = "PUBLISH_BLOCKED_CREDENTIALS"
+    elif state == "FAILED":
+        code = "PUBLISH_FAILED"
+    elif state in ("BUFFER_SCHEDULED", "BUFFER_SENT"):
+        if now.time() < hhmm(g.get("confirm_alert_after", "17:00")):  # Buffer normally confirms within minutes
+            outcome("SKIP", "AWAITING_CONFIRMATION", state)
+            return 0
+        code = "LINKEDIN_NOT_CONFIRMED"
+    else:
+        code = "NOT_HANDED_TO_BUFFER"
+    if notify_on and notify.failure_open(d):  # one alert per day: the open issue already tells the owner
+        outcome("SKIP", "ALREADY_ALERTED", code)
+        return 0
+    log(f"::error title=NO LINKEDIN POST::{code}: {REASONS.get(code, '')}")
+    if notify_on:
+        notify.notify_failure(d, code, REASONS.get(code, "see the reason code"), run_url())
+    outcome("FAIL", code)
+    return 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--date"); ap.add_argument("--local"); ap.add_argument("--out")
     ap.add_argument("--fixture-writer"); ap.add_argument("--mode", choices=["auto", "shadow"], default="auto")
     ap.add_argument("--check-connections", action="store_true"); ap.add_argument("--ignore-schedule", action="store_true")
     ap.add_argument("--no-notify", action="store_true"); ap.add_argument("--config", default=CONFIG_PATH)
+    ap.add_argument("--watchdog", action="store_true",
+                    help="after the cutoff: alert (once per day) if the trading day has no confirmed LinkedIn post")
     ap.add_argument("--latest", type=int, metavar="DAYS",
                     help="private test: use the newest package from the last DAYS days (never publishes)")
     a = ap.parse_args(argv)
@@ -214,30 +279,39 @@ def main(argv=None):
     live_day = not a.date and not a.local
     out_root = a.out or os.path.join(ROOT, "generator-output")
 
+    if a.watchdog:
+        return watchdog(cfg, g, d, now, notify_on)
     if not g.get("enabled") and live_day and not a.ignore_schedule:
         log("GENERATOR OFF: config vitti_generator.enabled is false; nothing to do.")
+        outcome("SKIP", "GENERATOR_OFF")
         return 0
     if not is_trading_day(d) and not a.ignore_schedule:
         log(f"NOT A TRADING DAY: {d}; nothing to do.")
+        outcome("SKIP", "NOT_TRADING_DAY")
         return 0
-    if live_day and not a.ignore_schedule and now.time() > hhmm(g.get("latest_start", "14:40")):
-        log(f"PAST START WINDOW: {now:%H:%M} is after {g.get('latest_start')} Sydney; the publisher cutoff is 3:15 PM.")
-        return 0
-    if live_day and existing_report(d):
+    if live_day and existing_report(d):  # idempotent: a retried or duplicate trigger never builds a second report
         log(f"ALREADY HAVE A REPORT FOR {d}: {', '.join(os.path.basename(x) for x in existing_report(d))}. One report per trading day.")
+        outcome("SKIP", "REPORT_EXISTS")
         return 0
     if notify_on and live_day and notify.failure_open(d):
-        log(f"PAUSED: a failure issue for {d} is open; close it to allow a retry.")
+        log(f"PAUSED: the day's failure was already alerted (issue open); close it to allow a retry.")
+        outcome("SKIP", "ALREADY_ALERTED")
         return 0
+    missed = live_day and not a.ignore_schedule and now.time() > hhmm(g.get("latest_start", "14:40"))
 
     give_up = live_day and now.time() >= hhmm(g.get("give_up_after", "14:30"))
     try:
+        if missed:
+            # A trading day, no report, and the start deadline has passed: this is a MISSED day, never a green skip.
+            raise GenError("MISSED_START_WINDOW", f"{now:%H:%M} is after the {g.get('latest_start')} Sydney start deadline "
+                           "(publisher cutoff 3:15 PM) and no report exists")
         src = make_source(g, a.local)
         pkgs = src.packages_for(d)
         if not pkgs:
             if live_day and now.time() >= hhmm(g.get("no_package_alert_after", "13:00")):
                 raise GenError("NO_PACKAGE", f"no Vitti Daily Mover package in Drive for {d}")
-            log(f"NO PACKAGE YET for {d}; the next scheduled run checks again.")
+            log(f"NO PACKAGE YET for {d}; the next run checks again.")
+            outcome("RETRY", "NO_PACKAGE_YET")
             return 0
         ident, errors, pkg = None, [], None
         for p in pkgs:  # newest first; the first package that passes every identity check is used
@@ -284,6 +358,7 @@ def main(argv=None):
             if notify_on:
                 notify.notify_log(f"{d.isoformat()}: shadow report built and verified with {wmode} (not published: {reason}). "
                                   f"No copy is kept on GitHub. {run_url()}")
+            outcome("SHADOW_OK", "NOT_PUBLISHED", reason)
             return 0
         sha = commit_and_push([res["pdf"], res["png"], os.path.join(out_dir, "publish.json")], rel,
                               f"TAR {ident.ticker} {d.day} {d.strftime('%b %Y')}: automated report from the Vitti Daily Mover (schema 4 handoff)")
@@ -292,17 +367,20 @@ def main(argv=None):
         summary(f"### HANDED OFF TO PUBLISHER\n- {ident.ticker} {d}\n- commit `{sha}`\n- PDF sha256 `{P['pdf_sha256']}`")
         if notify_on:
             notify.notify_log(f"{d.isoformat()} {ident.ticker}: report generated and handed to the publisher (commit {sha}). {run_url()}")
+        outcome("PUBLISHED_HANDOFF", "HANDED_TO_PUBLISHER", f"commit {sha[:7]}")
         return 0
     except GenError as e:
         final = (not e.transient) or give_up or not live_day
         log(f"NO REPORT: {safe(e)}")
         if not final:
-            log(f"::warning title=RETRY LATER::{safe(e)} (the next scheduled run retries)")
+            log(f"::warning title=RETRY LATER::{safe(e)} (the next run retries)")
+            outcome("RETRY", e.code)
             return 0
         log(f"::error title=NO REPORT::{safe(e)}")
         summary(f"### NO REPORT\n- date {d}\n- {safe(e)}")
         if notify_on and live_day:
             notify.notify_failure(d, e.code, REASONS.get(e.code, "see the reason code"), run_url())
+        outcome("FAIL", e.code)
         return 1
 
 
