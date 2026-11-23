@@ -9,20 +9,31 @@ name: TAR Generate
 # enabled=true + publish=false = SHADOW: reports are built and verified, never committed or posted.
 # Publishing additionally needs vitti_generator.publish, vitti_generator.rights_confirmed and the master switch.
 #
-# Triggers: schedule every 10 min 10:00-14:50 Sydney on weekdays (retries until a report exists), repository_dispatch
-# "tar_package_ready" (optional, sent by apps-script/TarDispatch.gs the moment a package lands), and manual runs.
+# Triggers (REV 2, 23 Nov 2026). GitHub's schedule proved unreliable on this repository (18-20 Nov: one run a day,
+# after the start deadline), so it is only a BACKUP. The PRIMARY trigger is apps-script/TarDispatch.gs, which runs on
+# Google's reliable timer next to the Drive import: it starts mode "run" as soon as today's package is COMPLETE, again
+# every 10 minutes while main has no report (capped), and mode "watchdog" after the cutoff.
+#   run       builds, verifies and hands off today's report (idempotent: a report on main means "nothing to do")
+#   watchdog  after 3:20 PM: one alert per day if the trading day has no confirmed LinkedIn post. Its completion also
+#             starts the publisher (workflow_run), which reconciles Buffer -> LinkedIn status.
+# Every run ends with one line "OUTCOME: PUBLISHED_HANDOFF | SHADOW_OK | SKIP | RETRY | FAIL <code>"; a missed trading
+# day is always FAIL (red) with one alert issue, never a green skip.
 on:
   schedule:
-    - cron: '*/10 10-14 * * 1-5'
+    - cron: '7,17,27,37,47,57 10-14 * * 1-5'   # backup generator runs (off the busy :00 minute)
+      timezone: 'Australia/Sydney'
+    - cron: '23 15 * * 1-5'                    # backup watchdog
+      timezone: 'Australia/Sydney'
+    - cron: '13 17 * * 1-5'                    # backup watchdog (LinkedIn confirmation)
       timezone: 'Australia/Sydney'
   repository_dispatch:
     types: [tar_package_ready]
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check-connections = Drive + optional Gemini key test (synthetic prompt), nothing generated; shadow = private test on the newest real package (even if already published), never publishes or commits; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
+        description: 'watchdog = missed-publication check (one alert per day); check-connections = Drive + optional Gemini key test (synthetic prompt), nothing generated; shadow = private test on the newest real package (even if already published), never publishes or commits; offline-tests = test suite only; run = normal run (publishes only if every switch allows it)'
         type: choice
-        options: [check-connections, shadow, offline-tests, run]
+        options: [check-connections, shadow, offline-tests, run, watchdog]
         default: check-connections
 
 permissions:
@@ -47,11 +58,15 @@ jobs:
           python-version: '3.12'
       - name: Is there anything to do?
         id: gate
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (startsWith(github.event.schedule, '23 15') || startsWith(github.event.schedule, '13 17')) && 'watchdog' || 'run' }}
         run: |
           D=$(TZ=Australia/Sydney date +%F)
           echo "Sydney now: $(TZ=Australia/Sydney date -Iseconds)"
           go=true
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          if [ "$MODE" = "watchdog" ]; then
+            echo "watchdog run"
+          elif [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             if ! python3 -c "import json,sys; sys.exit(0 if json.load(open('config/auto-publish.json')).get('vitti_generator',{}).get('enabled') is True else 1)"; then
               echo "generator disabled (config vitti_generator.enabled=false)"; go=false
             elif ls -d reports/$D-* >/dev/null 2>&1; then
@@ -59,8 +74,9 @@ jobs:
             fi
           fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
       - name: Install tools
-        if: steps.gate.outputs.go == 'true'
+        if: steps.gate.outputs.go == 'true' && steps.gate.outputs.mode != 'watchdog'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils qpdf libpango-1.0-0 libpangoft2-1.0-0 hunspell hunspell-en-au hunspell-en-us
@@ -75,10 +91,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MODE_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
+          MODE_INPUT: ${{ steps.gate.outputs.mode }}
         run: |
           case "$MODE_INPUT" in
             check-connections) python3 -m tar_gen.run --check-connections ;;
+            watchdog) python3 -m tar_gen.run --watchdog ;;
             # Private test: newest package of the last 10 days, built even if already published; forced shadow mode,
             # no notifications, output deleted. The normal "run" path below keeps every duplicate rule.
             shadow) rc=0; python3 -m tar_gen.run --latest 10 --no-notify --out "$RUNNER_TEMP/tar-shadow" || rc=$?

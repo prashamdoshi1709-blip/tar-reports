@@ -69,6 +69,10 @@ def set_status(folder, state, final=None, **kw):
     assert state in STATES
     s = load_status(folder)
     at = now_syd().isoformat()
+    if state in ("BUFFER_SCHEDULED", "BUFFER_SENT", "LINKEDIN_CONFIRMED"):  # a credential block has been resolved
+        s.pop("blocked_reason", None)
+        if "reason" not in kw:
+            s.pop("reason", None)
     s.update(kw)
     changed = s.get("state") != state or any(k in kw for k in ("reason", "linkedin_url"))
     s["state"], s["updated_at"] = state, at
@@ -85,20 +89,28 @@ def set_status(folder, state, final=None, **kw):
     return s
 
 
-def die(msg, transient=False):
-    """transient=True: may heal on the next cron (Pages not deployed yet, Buffer/API hiccup) and is retried until the
-    cutoff. Anything else, or any failure at/after the cutoff, is FINAL: recorded as FAILED and the run goes RED."""
+def die(msg, transient=False, credential=False):
+    """transient=True: may heal on the next run (Pages not deployed yet, Buffer/API hiccup) and is retried until the
+    cutoff. credential=True: the Buffer key is missing, expired or revoked. Nothing was posted, so the day is NOT closed:
+    the run goes RED (GitHub alerts the owner) and the next run after the key is replaced publishes, until the cutoff.
+    Anything else, or any failure at/after the cutoff, is FINAL: recorded as FAILED and the run goes RED."""
     print(f"NOT SCHEDULED: {msg}")
     if MODE in ("scheduled",):
         f = CTX.get("folder")
-        final = (not transient) or CTX.get("past_cutoff", False)
+        final = (not transient and not credential) or CTX.get("past_cutoff", False)
         if f:
             if final:
                 set_status(f, "FAILED", final=True, reason=msg)
+            elif credential:
+                st = load_status(f)
+                if st.get("blocked_reason") != msg:  # record once; repeated runs do not grow the history
+                    set_status(f, st.get("state") or "HANDOFF_COMMITTED", blocked_reason=msg, reason=msg)
+                print(f"BLOCKED: {msg}. Replace the BUFFER_API_KEY secret; the next run publishes (until the cutoff).")
             else:
                 print(f"RETRY: transient problem, the next cron run tries again until the cutoff ({msg})")
-        print(f"::{'error' if final and f else 'warning'} title=NOT SCHEDULED::{msg}")
-        sys.exit(1 if (final and f) else 0)
+        red = bool(f) and (final or credential)
+        print(f"::{'error' if red else 'warning'} title=NOT SCHEDULED::{msg}")
+        sys.exit(1 if red else 0)
     print(f"::error title=NOT SCHEDULED::{msg}")  # annotation: readable through the check-runs API
     sys.exit(1)
 
@@ -131,7 +143,7 @@ def automated_gate(P, cfg):
 def gql(query, variables=None, soft=False):
     key = os.environ.get("BUFFER_API_KEY", "").strip()
     if not key:
-        die("BUFFER_API_KEY secret is not set (single manual step: add it under repo Settings > Secrets > Actions)")
+        die("BUFFER_API_KEY secret is not set (single manual step: add it under repo Settings > Secrets > Actions)", credential=True)
     req = urllib.request.Request(API, data=json.dumps({"query": query, "variables": variables or {}}).encode(),
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                                           "User-Agent": "tar-buffer-schedule/1.0"})
@@ -141,7 +153,8 @@ def gql(query, variables=None, soft=False):
     except urllib.error.HTTPError as e:
         if soft:
             raise RuntimeError(f"HTTP {e.code}")
-        die(f"Buffer API HTTP {e.code} (401 means the API key is invalid or revoked)", transient=e.code >= 500 or e.code == 429)
+        die(f"Buffer API HTTP {e.code} (401 means the API key is invalid or revoked)", transient=e.code >= 500 or e.code == 429,
+            credential=e.code in (401, 403))
     except Exception as e:
         if soft:
             raise RuntimeError(type(e).__name__)
